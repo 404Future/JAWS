@@ -88,22 +88,58 @@ subdomain_enum_quick() {
 subdomain_bruteforce() {
     echo -e "${YELLOW}[*] Phase 2: Subdomain Bruteforce${NC}"
     
-    # Check for wordlist
-    WORDLIST="/usr/share/wordlists/subdomains-top1million-5000.txt"
-    if [ ! -f "$WORDLIST" ]; then
-        WORDLIST="$HOME/wordlists/subdomains.txt"
+    # Check for wordlist in multiple locations
+    WORDLIST=""
+    WORDLIST_PATHS=(
+        "/usr/share/wordlists/subdomains-top1million-5000.txt"
+        "$HOME/wordlists/subdomains.txt"
+        "$HOME/wordlists/SecLists/Discovery/DNS/subdomains-top1million-5000.txt"
+        "/usr/share/seclists/Discovery/DNS/subdomains-top1million-5000.txt"
+    )
+    
+    for path in "${WORDLIST_PATHS[@]}"; do
+        if [ -f "$path" ]; then
+            WORDLIST="$path"
+            break
+        fi
+    done
+    
+    if [ -z "$WORDLIST" ]; then
+        echo -e "${RED}[!] No wordlist found. Skipping bruteforce.${NC}"
+        echo -e "${YELLOW}[!] Install SecLists: git clone https://github.com/danielmiessler/SecLists.git ~/wordlists/SecLists${NC}"
+        return
     fi
     
-    if [ ! -f "$WORDLIST" ]; then
-        echo -e "${RED}[!] No wordlist found. Skipping bruteforce.${NC}"
-        return
+    echo -e "${BLUE}  [*] Using wordlist: $WORDLIST${NC}"
+    
+    # Check for resolvers
+    RESOLVERS=""
+    RESOLVER_PATHS=(
+        "/usr/share/dns/resolvers.txt"
+        "$HOME/.config/resolvers/resolvers.txt"
+    )
+    
+    for path in "${RESOLVER_PATHS[@]}"; do
+        if [ -f "$path" ]; then
+            RESOLVERS="$path"
+            break
+        fi
+    done
+    
+    if [ -z "$RESOLVERS" ]; then
+        echo -e "${YELLOW}[!] No resolvers file found, using default DNS${NC}"
     fi
     
     # Puredns
     if check_tool puredns; then
         echo -e "${BLUE}  [→] Running puredns bruteforce...${NC}"
-        puredns bruteforce "$WORDLIST" "$DOMAIN" -r /usr/share/dns/resolvers.txt \
-            --write "$DIRECTORY/puredns.txt" 2>/dev/null
+        if [ -n "$RESOLVERS" ]; then
+            puredns bruteforce "$WORDLIST" "$DOMAIN" -r "$RESOLVERS" \
+                --write "$DIRECTORY/puredns.txt" 2>/dev/null
+        else
+            puredns bruteforce "$WORDLIST" "$DOMAIN" \
+                --write "$DIRECTORY/puredns.txt" 2>/dev/null
+        fi
         echo -e "${GREEN}  [✓] Puredns: $(wc -l < "$DIRECTORY/puredns.txt" 2>/dev/null || echo 0) subdomains${NC}"
         
         # Merge with existing results
