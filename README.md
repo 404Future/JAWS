@@ -312,14 +312,17 @@ export PATH=$PATH:~/go/bin
 
 ### Naabu Installation Failed
 
-Naabu requires libpcap development libraries. Install them:
+Naabu requires libpcap development libraries and pkg-config. Install them:
 
 ```bash
 # Ubuntu/Debian
-sudo apt install libpcap-dev
+sudo apt install libpcap-dev pkg-config
 
 # Fedora/RHEL
-sudo dnf install libpcap-devel
+sudo dnf install libpcap-devel pkgconfig
+
+# Arch/Manjaro
+sudo pacman -S libpcap pkgconf
 
 # Then reinstall naabu
 go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
@@ -386,6 +389,10 @@ Special thanks to:
 
 ## Support
 
-- 🦈 Report bugs via GitHub Issues
+- 🐛 Report bugs via GitHub Issues
 - 💡 Feature requests welcome
 - ⭐ Star if you find it useful!
+
+---
+
+**Happy Hunting! 🦈**
