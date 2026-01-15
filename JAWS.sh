@@ -16,6 +16,29 @@ NC='\033[0m'
 MODE="full"
 INTERACTIVE=false
 
+# Help function (defined before parsing arguments)
+show_help() {
+    echo "Usage: $0 [OPTIONS] domain1.com domain2.com ..."
+    echo ""
+    echo "Options:"
+    echo "  -m MODE    Scan mode (default: full)"
+    echo "             Modes: full, passive, active, quick, custom"
+    echo "  -i         Interactive mode"
+    echo "  -h         Show this help message"
+    echo ""
+    echo "Modes:"
+    echo "  full       Complete reconnaissance workflow"
+    echo "  passive    Only passive enumeration (subfinder, crt.sh, etc.)"
+    echo "  active     Active scanning (port scan, vuln scan)"
+    echo "  quick      Fast scan (subfinder, httpx, nmap top ports)"
+    echo "  custom     Choose specific tools interactively"
+    echo ""
+    echo "Examples:"
+    echo "  $0 example.com"
+    echo "  $0 -m passive example.com target.com"
+    echo "  $0 -i"
+}
+
 # Banner
 echo -e "${BLUE}"
 cat << "EOF"
@@ -48,29 +71,6 @@ while getopts "m:ih" OPTION; do
       ;;
   esac
 done
-
-# Help function
-show_help() {
-    echo "Usage: $0 [OPTIONS] domain1.com domain2.com ..."
-    echo ""
-    echo "Options:"
-    echo "  -m MODE    Scan mode (default: full)"
-    echo "             Modes: full, passive, active, quick, custom"
-    echo "  -i         Interactive mode"
-    echo "  -h         Show this help message"
-    echo ""
-    echo "Modes:"
-    echo "  full       Complete reconnaissance workflow"
-    echo "  passive    Only passive enumeration (subfinder, crt.sh, etc.)"
-    echo "  active     Active scanning (port scan, vuln scan)"
-    echo "  quick      Fast scan (subfinder, httpx, nmap top ports)"
-    echo "  custom     Choose specific tools interactively"
-    echo ""
-    echo "Examples:"
-    echo "  $0 example.com"
-    echo "  $0 -m passive example.com target.com"
-    echo "  $0 -i"
-}
 
 # Main scan function
 scan_domain() {
