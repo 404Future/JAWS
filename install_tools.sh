@@ -23,6 +23,32 @@ if [ "$EUID" -ne 0 ] && [ "$1" != "--user" ]; then
     echo -e "${YELLOW}[!] Some tools require sudo. Run with sudo or use --user flag for user installation only${NC}"
 fi
 
+# Detect shell
+detect_shell() {
+    if [ -n "$ZSH_VERSION" ]; then
+        echo "zsh"
+    elif [ -n "$BASH_VERSION" ]; then
+        echo "bash"
+    else
+        # Fallback to checking SHELL variable
+        case "$SHELL" in
+            */zsh) echo "zsh" ;;
+            */bash) echo "bash" ;;
+            *) echo "bash" ;; # default
+        esac
+    fi
+}
+
+DETECTED_SHELL=$(detect_shell)
+if [ "$DETECTED_SHELL" = "zsh" ]; then
+    SHELL_RC="$HOME/.zshrc"
+else
+    SHELL_RC="$HOME/.bashrc"
+fi
+
+echo -e "${BLUE}[*] Detected shell: $DETECTED_SHELL${NC}"
+echo -e "${BLUE}[*] Using config file: $SHELL_RC${NC}"
+
 # Detect OS
 if [ -f /etc/os-release ]; then
     . /etc/os-release
@@ -63,7 +89,9 @@ install_go() {
     fi
     
     # Set Go environment variables
-    echo 'export PATH=$PATH:~/go/bin' >> ~/.bashrc
+    if ! grep -q "export PATH=\$PATH:~/go/bin" "$SHELL_RC"; then
+        echo 'export PATH=$PATH:~/go/bin' >> "$SHELL_RC"
+    fi
     export PATH=$PATH:~/go/bin
     
     echo -e "${GREEN}[✓] Go installed${NC}"
@@ -77,9 +105,9 @@ install_dependencies() {
         sudo apt update
         sudo apt install -y curl wget git build-essential jq python3 python3-pip nmap masscan libpcap-dev pkg-config
     elif [ "$OS" = "fedora" ] || [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
-        sudo dnf install -y curl wget git gcc make jq python3 python3-pip nmap masscan
+        sudo dnf install -y curl wget git gcc make jq python3 python3-pip nmap masscan libpcap-devel pkgconfig
     elif [ "$OS" = "arch" ] || [ "$OS" = "manjaro" ]; then
-        sudo pacman -S --noconfirm curl wget git base-devel jq python python-pip nmap masscan
+        sudo pacman -S --noconfirm curl wget git base-devel jq python python-pip nmap masscan libpcap pkgconf
     fi
     
     echo -e "${GREEN}[✓] System dependencies installed${NC}"
@@ -166,12 +194,17 @@ install_wordlists() {
     # SecLists
     if [ ! -d "$HOME/wordlists/SecLists" ]; then
         echo -e "${BLUE}  [→] Cloning SecLists...${NC}"
-        git clone https://github.com/danielmiessler/SecLists.git ~/wordlists/SecLists
+        git clone --depth 1 https://github.com/danielmiessler/SecLists.git ~/wordlists/SecLists
     fi
     
-    # Create symlink for common wordlist
+    # Create symlinks for common wordlists
     if [ -f "$HOME/wordlists/SecLists/Discovery/DNS/subdomains-top1million-5000.txt" ]; then
         ln -sf "$HOME/wordlists/SecLists/Discovery/DNS/subdomains-top1million-5000.txt" ~/wordlists/subdomains.txt
+        # Also create system-wide symlink if running as root
+        if [ "$EUID" -eq 0 ]; then
+            sudo mkdir -p /usr/share/wordlists
+            sudo ln -sf "$HOME/wordlists/SecLists/Discovery/DNS/subdomains-top1million-5000.txt" /usr/share/wordlists/subdomains-top1million-5000.txt
+        fi
     fi
     
     echo -e "${GREEN}[✓] Wordlists installed${NC}"
@@ -199,14 +232,17 @@ post_install() {
     echo -e "${YELLOW}[*] Performing post-installation configuration...${NC}"
     
     # Add Go bin to PATH if not already there
-    if ! grep -q "export PATH=\$PATH:~/go/bin" ~/.bashrc; then
-        echo 'export PATH=$PATH:~/go/bin' >> ~/.bashrc
+    if ! grep -q "export PATH=\$PATH:~/go/bin" "$SHELL_RC"; then
+        echo 'export PATH=$PATH:~/go/bin' >> "$SHELL_RC"
     fi
+    
+    # Export PATH for current session
+    export PATH=$PATH:~/go/bin
     
     # Update nuclei templates
     if command_exists nuclei; then
         echo -e "${BLUE}  [→] Updating nuclei templates...${NC}"
-        nuclei -update-templates -silent
+        nuclei -update-templates -silent 2>/dev/null
     fi
     
     # Make JAWS.sh executable
@@ -282,9 +318,10 @@ main() {
     echo -e "${GREEN}║   Installation Complete!              ║${NC}"
     echo -e "${GREEN}╚═══════════════════════════════════════╝${NC}"
     echo -e "\n${YELLOW}Next steps:${NC}"
-    echo -e "1. Run: ${BLUE}source ~/.zshrc${NC}"
-    echo -e "2. Test: ${BLUE}./JAWS.sh -h${NC}"
-    echo -e "3. Scan: ${BLUE}./JAWS.sh example.com${NC}\n"
+    echo -e "1. Run: ${BLUE}source $SHELL_RC${NC}"
+    echo -e "2. Or restart your terminal"
+    echo -e "3. Test: ${BLUE}./JAWS.sh -h${NC}"
+    echo -e "4. Scan: ${BLUE}./JAWS.sh example.com${NC}\n"
 }
 
 # Run main installation
