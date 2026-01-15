@@ -31,7 +31,7 @@ A comprehensive bug bounty reconnaissance tool that automates the entire recon w
 
 ```bash
 # Clone the repository
-git clone https://github.com/404Future/jaws.git
+git clone https://github.com/yourusername/jaws.git
 cd jaws
 
 # Make scripts executable
@@ -267,6 +267,63 @@ cat domain_recon/urls_all.txt | grep -E "\.env|\.git|\.sql|backup|config"
 ```
 
 ## Troubleshooting
+
+### Tools Not Found After Installation
+
+If tools show as "not installed" after running install_tools.sh:
+
+**Quick Fix:**
+```bash
+# Option 1: Source the fix script
+source ./fix_path.sh
+
+# Option 2: Manually export PATH
+export PATH=$PATH:~/go/bin
+
+# Option 3: Reload your shell config
+# For zsh:
+source ~/.zshrc
+# For bash:
+source ~/.bashrc
+
+# Option 4: Restart your terminal
+```
+
+**Verify Installation:**
+```bash
+# Check what's installed
+./check_tools.sh
+
+# Verify tools are in PATH
+which subfinder httpx nuclei
+```
+
+### Zsh Users
+
+The installer now auto-detects zsh and configures `.zshrc` instead of `.bashrc`. If you're using zsh:
+
+```bash
+# Make sure PATH is set in current session
+source ~/.zshrc
+
+# Or manually:
+export PATH=$PATH:~/go/bin
+```
+
+### Naabu Installation Failed
+
+Naabu requires libpcap development libraries. Install them:
+
+```bash
+# Ubuntu/Debian
+sudo apt install libpcap-dev
+
+# Fedora/RHEL
+sudo dnf install libpcap-devel
+
+# Then reinstall naabu
+go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
+```
 
 ### Tools Not Found
 ```bash
