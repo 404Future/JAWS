@@ -1,0 +1,321 @@
+#!/bin/bash
+
+# scan.lib - Function library for JAWS.sh
+# Contains all reconnaissance tool functions
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+# Check if a tool is installed
+check_tool() {
+    local tool=$1
+    if ! command -v "$tool" &> /dev/null; then
+        echo -e "${RED}[!] $tool is not installed${NC}"
+        return 1
+    fi
+    return 0
+}
+
+# Merge and deduplicate files
+merge_results() {
+    local output=$1
+    shift
+    cat "$@" 2>/dev/null | sort -u > "$output"
+}
+
+# ============================================================================
+# PHASE 1: SUBDOMAIN ENUMERATION (PASSIVE)
+# ============================================================================
+
+subdomain_enum() {
+    echo -e "${YELLOW}[*] Phase 1: Subdomain Enumeration (Passive)${NC}"
+    
+    # Subfinder
+    if check_tool subfinder; then
+        echo -e "${BLUE}  [→] Running subfinder...${NC}"
+        subfinder -d "$DOMAIN" -silent -o "$DIRECTORY/subfinder.txt" 2>/dev/null
+        echo -e "${GREEN}  [✓] Subfinder: $(wc -l < "$DIRECTORY/subfinder.txt" 2>/dev/null || echo 0) subdomains${NC}"
+    fi
+    
+    # Assetfinder
+    if check_tool assetfinder; then
+        echo -e "${BLUE}  [→] Running assetfinder...${NC}"
+        assetfinder --subs-only "$DOMAIN" > "$DIRECTORY/assetfinder.txt" 2>/dev/null
+        echo -e "${GREEN}  [✓] Assetfinder: $(wc -l < "$DIRECTORY/assetfinder.txt" 2>/dev/null || echo 0) subdomains${NC}"
+    fi
+    
+    # Amass (passive mode)
+    if check_tool amass; then
+        echo -e "${BLUE}  [→] Running amass (passive)...${NC}"
+        timeout 300 amass enum -passive -d "$DOMAIN" -o "$DIRECTORY/amass.txt" 2>/dev/null
+        echo -e "${GREEN}  [✓] Amass: $(wc -l < "$DIRECTORY/amass.txt" 2>/dev/null || echo 0) subdomains${NC}"
+    fi
+    
+    # crt.sh
+    echo -e "${BLUE}  [→] Querying crt.sh...${NC}"
+    curl -s "https://crt.sh/?q=%.$DOMAIN&output=json" | \
+        jq -r '.[].name_value' 2>/dev/null | \
+        sed 's/\*\.//g' | sort -u > "$DIRECTORY/crtsh.txt"
+    echo -e "${GREEN}  [✓] crt.sh: $(wc -l < "$DIRECTORY/crtsh.txt" 2>/dev/null || echo 0) subdomains${NC}"
+    
+    # Merge all results
+    merge_results "$DIRECTORY/subdomains_all.txt" \
+        "$DIRECTORY/subfinder.txt" \
+        "$DIRECTORY/assetfinder.txt" \
+        "$DIRECTORY/amass.txt" \
+        "$DIRECTORY/crtsh.txt"
+    
+    echo -e "${GREEN}[✓] Total unique subdomains: $(wc -l < "$DIRECTORY/subdomains_all.txt")${NC}"
+}
+
+# Quick subdomain enumeration (subfinder only)
+subdomain_enum_quick() {
+    echo -e "${YELLOW}[*] Phase 1: Quick Subdomain Enumeration${NC}"
+    
+    if check_tool subfinder; then
+        subfinder -d "$DOMAIN" -silent -o "$DIRECTORY/subdomains_all.txt" 2>/dev/null
+        echo -e "${GREEN}[✓] Found $(wc -l < "$DIRECTORY/subdomains_all.txt") subdomains${NC}"
+    else
+        echo -e "${RED}[!] Subfinder not installed. Skipping.${NC}"
+    fi
+}
+
+# ============================================================================
+# PHASE 2: SUBDOMAIN BRUTEFORCE (ACTIVE)
+# ============================================================================
+
+subdomain_bruteforce() {
+    echo -e "${YELLOW}[*] Phase 2: Subdomain Bruteforce${NC}"
+    
+    # Check for wordlist
+    WORDLIST="/usr/share/wordlists/subdomains-top1million-5000.txt"
+    if [ ! -f "$WORDLIST" ]; then
+        WORDLIST="$HOME/wordlists/subdomains.txt"
+    fi
+    
+    if [ ! -f "$WORDLIST" ]; then
+        echo -e "${RED}[!] No wordlist found. Skipping bruteforce.${NC}"
+        return
+    fi
+    
+    # Puredns
+    if check_tool puredns; then
+        echo -e "${BLUE}  [→] Running puredns bruteforce...${NC}"
+        puredns bruteforce "$WORDLIST" "$DOMAIN" -r /usr/share/dns/resolvers.txt \
+            --write "$DIRECTORY/puredns.txt" 2>/dev/null
+        echo -e "${GREEN}  [✓] Puredns: $(wc -l < "$DIRECTORY/puredns.txt" 2>/dev/null || echo 0) subdomains${NC}"
+        
+        # Merge with existing results
+        cat "$DIRECTORY/puredns.txt" >> "$DIRECTORY/subdomains_all.txt" 2>/dev/null
+        sort -u "$DIRECTORY/subdomains_all.txt" -o "$DIRECTORY/subdomains_all.txt"
+    fi
+}
+
+# ============================================================================
+# PHASE 3: DNS RESOLUTION
+# ============================================================================
+
+dns_resolution() {
+    echo -e "${YELLOW}[*] Phase 3: DNS Resolution & Validation${NC}"
+    
+    if [ ! -f "$DIRECTORY/subdomains_all.txt" ]; then
+        echo -e "${RED}[!] No subdomains file found${NC}"
+        return
+    fi
+    
+    if check_tool dnsx; then
+        echo -e "${BLUE}  [→] Resolving subdomains with dnsx...${NC}"
+        cat "$DIRECTORY/subdomains_all.txt" | \
+            dnsx -silent -a -resp -o "$DIRECTORY/resolved.txt" 2>/dev/null
+        echo -e "${GREEN}[✓] Resolved: $(wc -l < "$DIRECTORY/resolved.txt" 2>/dev/null || echo 0) hosts${NC}"
+    fi
+}
+
+# ============================================================================
+# PHASE 4: HTTP PROBING
+# ============================================================================
+
+http_probe() {
+    echo -e "${YELLOW}[*] Phase 4: HTTP Probing${NC}"
+    
+    INPUT_FILE="$DIRECTORY/subdomains_all.txt"
+    if [ ! -f "$INPUT_FILE" ]; then
+        echo "$DOMAIN" > "$INPUT_FILE"
+    fi
+    
+    if check_tool httpx; then
+        echo -e "${BLUE}  [→] Probing HTTP services with httpx...${NC}"
+        cat "$INPUT_FILE" | \
+            httpx -silent -title -status-code -tech-detect -content-length \
+            -o "$DIRECTORY/httpx_results.txt" 2>/dev/null
+        
+        # Extract just the URLs
+        cat "$DIRECTORY/httpx_results.txt" | awk '{print $1}' > "$DIRECTORY/live_hosts.txt"
+        
+        echo -e "${GREEN}[✓] Live hosts: $(wc -l < "$DIRECTORY/live_hosts.txt" 2>/dev/null || echo 0)${NC}"
+    else
+        echo -e "${RED}[!] httpx not installed${NC}"
+    fi
+}
+
+# ============================================================================
+# PHASE 5: URL DISCOVERY
+# ============================================================================
+
+url_discovery() {
+    echo -e "${YELLOW}[*] Phase 5: URL Discovery & Crawling${NC}"
+    
+    if [ ! -f "$DIRECTORY/live_hosts.txt" ]; then
+        echo -e "${RED}[!] No live hosts found${NC}"
+        return
+    fi
+    
+    # Katana crawler
+    if check_tool katana; then
+        echo -e "${BLUE}  [→] Crawling with katana...${NC}"
+        cat "$DIRECTORY/live_hosts.txt" | \
+            katana -silent -d 3 -jc -o "$DIRECTORY/katana_urls.txt" 2>/dev/null
+        echo -e "${GREEN}  [✓] Katana: $(wc -l < "$DIRECTORY/katana_urls.txt" 2>/dev/null || echo 0) URLs${NC}"
+    fi
+    
+    # GAU - Get All URLs
+    if check_tool gau; then
+        echo -e "${BLUE}  [→] Fetching URLs from archives with gau...${NC}"
+        echo "$DOMAIN" | gau --threads 5 > "$DIRECTORY/gau_urls.txt" 2>/dev/null
+        echo -e "${GREEN}  [✓] GAU: $(wc -l < "$DIRECTORY/gau_urls.txt" 2>/dev/null || echo 0) URLs${NC}"
+    fi
+    
+    # Waybackurls
+    if check_tool waybackurls; then
+        echo -e "${BLUE}  [→] Fetching wayback machine URLs...${NC}"
+        echo "$DOMAIN" | waybackurls > "$DIRECTORY/wayback_urls.txt" 2>/dev/null
+        echo -e "${GREEN}  [✓] Wayback: $(wc -l < "$DIRECTORY/wayback_urls.txt" 2>/dev/null || echo 0) URLs${NC}"
+    fi
+    
+    # Merge all URLs
+    merge_results "$DIRECTORY/urls_all.txt" \
+        "$DIRECTORY/katana_urls.txt" \
+        "$DIRECTORY/gau_urls.txt" \
+        "$DIRECTORY/wayback_urls.txt"
+    
+    echo -e "${GREEN}[✓] Total unique URLs: $(wc -l < "$DIRECTORY/urls_all.txt")${NC}"
+}
+
+url_discovery_passive() {
+    echo -e "${YELLOW}[*] Phase 5: URL Discovery (Passive Only)${NC}"
+    
+    # Only GAU and Wayback (no crawling)
+    if check_tool gau; then
+        echo "$DOMAIN" | gau --threads 5 > "$DIRECTORY/gau_urls.txt" 2>/dev/null
+    fi
+    
+    if check_tool waybackurls; then
+        echo "$DOMAIN" | waybackurls > "$DIRECTORY/wayback_urls.txt" 2>/dev/null
+    fi
+    
+    merge_results "$DIRECTORY/urls_all.txt" \
+        "$DIRECTORY/gau_urls.txt" \
+        "$DIRECTORY/wayback_urls.txt"
+    
+    echo -e "${GREEN}[✓] Total URLs: $(wc -l < "$DIRECTORY/urls_all.txt")${NC}"
+}
+
+# ============================================================================
+# PHASE 6: VISUAL RECONNAISSANCE
+# ============================================================================
+
+screenshots() {
+    echo -e "${YELLOW}[*] Phase 6: Taking Screenshots${NC}"
+    
+    if [ ! -f "$DIRECTORY/live_hosts.txt" ]; then
+        echo -e "${RED}[!] No live hosts found${NC}"
+        return
+    fi
+    
+    if check_tool gowitness; then
+        echo -e "${BLUE}  [→] Capturing screenshots with gowitness...${NC}"
+        gowitness file -f "$DIRECTORY/live_hosts.txt" \
+            --screenshot-path "$DIRECTORY/screenshots" \
+            --disable-logging 2>/dev/null
+        echo -e "${GREEN}[✓] Screenshots saved to $DIRECTORY/screenshots/${NC}"
+    elif check_tool aquatone; then
+        echo -e "${BLUE}  [→] Capturing screenshots with aquatone...${NC}"
+        cat "$DIRECTORY/live_hosts.txt" | aquatone -out "$DIRECTORY/aquatone" 2>/dev/null
+        echo -e "${GREEN}[✓] Screenshots saved to $DIRECTORY/aquatone/${NC}"
+    else
+        echo -e "${RED}[!] No screenshot tool installed (gowitness/aquatone)${NC}"
+    fi
+}
+
+# ============================================================================
+# PHASE 7: PORT SCANNING
+# ============================================================================
+
+port_scan_fast() {
+    echo -e "${YELLOW}[*] Phase 7a: Fast Port Scanning${NC}"
+    
+    if check_tool naabu; then
+        echo -e "${BLUE}  [→] Scanning top ports with naabu...${NC}"
+        echo "$DOMAIN" | naabu -top-ports 1000 -silent -o "$DIRECTORY/naabu_ports.txt" 2>/dev/null
+        echo -e "${GREEN}[✓] Open ports found: $(wc -l < "$DIRECTORY/naabu_ports.txt" 2>/dev/null || echo 0)${NC}"
+    elif check_tool masscan; then
+        echo -e "${BLUE}  [→] Scanning with masscan...${NC}"
+        sudo masscan -p1-10000 "$DOMAIN" --rate=1000 -oL "$DIRECTORY/masscan_ports.txt" 2>/dev/null
+        echo -e "${GREEN}[✓] Masscan complete${NC}"
+    fi
+}
+
+port_scan_full() {
+    echo -e "${YELLOW}[*] Phase 7b: Comprehensive Port Scanning${NC}"
+    
+    if check_tool nmap; then
+        echo -e "${BLUE}  [→] Running nmap detailed scan...${NC}"
+        nmap -sV -sC -p- "$DOMAIN" -oN "$DIRECTORY/nmap_scan.txt" 2>/dev/null
+        echo -e "${GREEN}[✓] Nmap scan complete${NC}"
+    fi
+}
+
+# ============================================================================
+# PHASE 8: VULNERABILITY SCANNING
+# ============================================================================
+
+vulnerability_scan() {
+    echo -e "${YELLOW}[*] Phase 8: Vulnerability Scanning${NC}"
+    
+    if [ ! -f "$DIRECTORY/live_hosts.txt" ]; then
+        echo -e "${RED}[!] No live hosts found${NC}"
+        return
+    fi
+    
+    # Nuclei
+    if check_tool nuclei; then
+        echo -e "${BLUE}  [→] Running nuclei vulnerability scan...${NC}"
+        
+        # Update templates
+        nuclei -update-templates 2>/dev/null
+        
+        # Run nuclei
+        cat "$DIRECTORY/live_hosts.txt" | \
+            nuclei -silent -severity critical,high,medium \
+            -o "$DIRECTORY/nuclei_results.txt" 2>/dev/null
+        
+        VULN_COUNT=$(wc -l < "$DIRECTORY/nuclei_results.txt" 2>/dev/null || echo 0)
+        
+        if [ "$VULN_COUNT" -gt 0 ]; then
+            echo -e "${RED}[!] Found $VULN_COUNT potential vulnerabilities${NC}"
+        else
+            echo -e "${GREEN}[✓] No vulnerabilities detected${NC}"
+        fi
+    else
+        echo -e "${RED}[!] Nuclei not installed${NC}"
+    fi
+    
+    # Nikto (optional, can be slow)
+    if check_tool nikto && [ -f "$DIRECTORY/live_hosts.txt" ]; then
+        echo -e "${BLUE}  [→] Running nikto web server scan (first host only)...${NC}"
+        FIRST_HOST=$(head -1 "$DIRECTORY/live_hosts.txt")
+        nikto -h "$FIRST_HOST" -output "$DIRECTORY/nikto_results.txt" 2>/dev/null
+        echo -e "${GREEN}[✓] Nikto scan complete${NC}"
+    fi
+}
