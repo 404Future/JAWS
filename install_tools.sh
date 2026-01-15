@@ -75,7 +75,7 @@ install_dependencies() {
     
     if [ "$OS" = "ubuntu" ] || [ "$OS" = "debian" ]; then
         sudo apt update
-        sudo apt install -y curl wget git build-essential jq python3 python3-pip nmap masscan
+        sudo apt install -y curl wget git build-essential jq python3 python3-pip nmap masscan libpcap-dev pkg-config
     elif [ "$OS" = "fedora" ] || [ "$OS" = "centos" ] || [ "$OS" = "rhel" ]; then
         sudo dnf install -y curl wget git gcc make jq python3 python3-pip nmap masscan
     elif [ "$OS" = "arch" ] || [ "$OS" = "manjaro" ]; then
@@ -279,10 +279,10 @@ main() {
     verify_installation
     
     echo -e "\n${GREEN}╔═══════════════════════════════════════╗${NC}"
-    echo -e "${GREEN}║   Installation Complete!             ║${NC}"
+    echo -e "${GREEN}║   Installation Complete!              ║${NC}"
     echo -e "${GREEN}╚═══════════════════════════════════════╝${NC}"
     echo -e "\n${YELLOW}Next steps:${NC}"
-    echo -e "1. Run: ${BLUE}source ~/.bashrc${NC}"
+    echo -e "1. Run: ${BLUE}source ~/.zshrc${NC}"
     echo -e "2. Test: ${BLUE}./JAWS.sh -h${NC}"
     echo -e "3. Scan: ${BLUE}./JAWS.sh example.com${NC}\n"
 }
