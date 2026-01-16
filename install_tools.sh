@@ -117,40 +117,43 @@ install_dependencies() {
 install_go_tools() {
     echo -e "${YELLOW}[*] Installing Go-based reconnaissance tools...${NC}"
     
+    # Ensure PATH is set for current session
+    export PATH=$PATH:~/go/bin
+    
     # ProjectDiscovery tools (most important)
     echo -e "${BLUE}  [→] Installing subfinder...${NC}"
-    go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+    go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest 2>&1 | grep -v "^go:"
     
     echo -e "${BLUE}  [→] Installing httpx...${NC}"
-    go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+    go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest 2>&1 | grep -v "^go:"
     
     echo -e "${BLUE}  [→] Installing nuclei...${NC}"
-    go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+    go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest 2>&1 | grep -v "^go:"
     
     echo -e "${BLUE}  [→] Installing katana...${NC}"
-    go install -v github.com/projectdiscovery/katana/cmd/katana@latest
+    go install -v github.com/projectdiscovery/katana/cmd/katana@latest 2>&1 | grep -v "^go:"
     
     echo -e "${BLUE}  [→] Installing naabu...${NC}"
-    go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
+    go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest 2>&1 | grep -v "^go:"
     
     echo -e "${BLUE}  [→] Installing dnsx...${NC}"
-    go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+    go install -v github.com/projectdiscovery/dnsx/cmd/dnsx@latest 2>&1 | grep -v "^go:"
     
     # Other essential tools
     echo -e "${BLUE}  [→] Installing assetfinder...${NC}"
-    go install -v github.com/tomnomnom/assetfinder@latest
+    go install -v github.com/tomnomnom/assetfinder@latest 2>&1 | grep -v "^go:"
     
     echo -e "${BLUE}  [→] Installing waybackurls...${NC}"
-    go install -v github.com/tomnomnom/waybackurls@latest
+    go install -v github.com/tomnomnom/waybackurls@latest 2>&1 | grep -v "^go:"
     
     echo -e "${BLUE}  [→] Installing gau...${NC}"
-    go install -v github.com/lc/gau/v2/cmd/gau@latest
+    go install -v github.com/lc/gau/v2/cmd/gau@latest 2>&1 | grep -v "^go:"
     
     echo -e "${BLUE}  [→] Installing gowitness...${NC}"
-    go install -v github.com/sensepost/gowitness@latest
+    go install -v github.com/sensepost/gowitness@latest 2>&1 | grep -v "^go:"
     
     echo -e "${BLUE}  [→] Installing puredns...${NC}"
-    go install -v github.com/d3mondev/puredns/v2@latest
+    go install -v github.com/d3mondev/puredns/v2@latest 2>&1 | grep -v "^go:"
     
     echo -e "${GREEN}[✓] Go tools installed${NC}"
 }
