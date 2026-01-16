@@ -21,10 +21,11 @@ cat << "EOF"
 EOF
 echo -e "${NC}"
 
-# Detect shell
-if [ -n "$ZSH_VERSION" ]; then
+# Detect shell - use actual user shell, not script shell
+ACTUAL_SHELL=$(basename "$SHELL")
+if [ "$ACTUAL_SHELL" = "zsh" ]; then
     SHELL_RC="$HOME/.zshrc"
-elif [ -n "$BASH_VERSION" ]; then
+elif [ "$ACTUAL_SHELL" = "bash" ]; then
     SHELL_RC="$HOME/.bashrc"
 else
     SHELL_RC="$HOME/.bashrc"
