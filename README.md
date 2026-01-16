@@ -31,7 +31,7 @@ A comprehensive bug bounty reconnaissance tool that automates the entire recon w
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/jaws.git
+git clone https://github.com/404Future/jaws.git
 cd jaws
 
 # Make scripts executable
