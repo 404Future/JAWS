@@ -31,7 +31,7 @@ A comprehensive bug bounty reconnaissance tool that automates the entire recon w
 
 ```bash
 # Clone the repository
-git clone https://github.com/404Future/jaws.git
+git clone https://github.com/yourusername/jaws.git
 cd jaws
 
 # Make scripts executable
@@ -41,7 +41,24 @@ chmod +x JAWS.sh scan.lib install_tools.sh
 sudo ./install_tools.sh
 
 # Update PATH
-source ~/.bashrc
+source ~/.bashrc  # or source ~/.zshrc for zsh users
+```
+
+### Fresh Install / Reinstall
+
+If you need to start clean:
+
+```bash
+# Uninstall everything
+chmod +x uninstall_tools.sh
+./uninstall_tools.sh
+
+# For complete cleanup (removes wordlists too)
+./uninstall_tools.sh --full
+
+# Then reinstall
+sudo ./install_tools.sh
+source ~/.zshrc  # or ~/.bashrc
 ```
 
 ### Manual Installation
@@ -91,6 +108,32 @@ git clone https://github.com/danielmiessler/SecLists.git ~/wordlists/SecLists
 ```
 
 </details>
+
+## Configuration
+
+You can customize JAWS behavior by editing `scan.lib`:
+
+```bash
+# Edit configuration section at top of scan.lib
+nano scan.lib
+```
+
+**Available settings:**
+
+```bash
+# Status codes considered "interesting" for filtering
+INTERESTING_STATUS_CODES="200|201|301|302|307|308|401|403"
+
+# Amass timeout in seconds (default: 300 = 5 minutes)
+AMASS_TIMEOUT=300
+```
+
+**Status Code Filtering:**
+- By default, JAWS filters HTTP responses to show only interesting status codes
+- 200/201: Successful responses
+- 301/302/307/308: Redirects (often lead to interesting resources)
+- 401/403: Authentication/Authorization required (potential targets)
+- All results saved in `httpx_results_all.txt`, filtered in `httpx_results.txt`
 
 ## Usage
 
@@ -163,8 +206,10 @@ example.com_recon/
 ├── crtsh.txt                  # crt.sh certificate results
 ├── puredns.txt                # Bruteforced subdomains
 ├── resolved.txt               # DNS resolution results
-├── httpx_results.txt          # HTTP probe results
-├── live_hosts.txt             # Live web hosts
+├── httpx_results_all.txt      # All HTTP probe results (any status)
+├── httpx_results.txt          # Filtered HTTP results (interesting status codes)
+├── live_hosts_all.txt         # All live HTTP/HTTPS hosts
+├── live_hosts.txt             # Filtered live hosts (200/30x/40x only)
 ├── katana_urls.txt            # Crawled URLs
 ├── gau_urls.txt               # Archive URLs
 ├── wayback_urls.txt           # Wayback machine URLs
@@ -389,10 +434,6 @@ Special thanks to:
 
 ## Support
 
-- 🐛 Report bugs via GitHub Issues
+- 🦈 Report bugs via GitHub Issues
 - 💡 Feature requests welcome
 - ⭐ Star if you find it useful!
-
----
-
-**Happy Hunting! 🦈**
