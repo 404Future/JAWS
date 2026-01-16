@@ -319,7 +319,7 @@ If tools show as "not installed" after running install_tools.sh:
 
 **Quick Fix:**
 ```bash
-# Option 1: Source the fix script
+# Option 1: Fix the Source script
 source ./fix_path.sh
 
 # Option 2: Manually export PATH
@@ -353,24 +353,6 @@ source ~/.zshrc
 
 # Or manually:
 export PATH=$PATH:~/go/bin
-```
-
-### Naabu Installation Failed
-
-Naabu requires libpcap development libraries and pkg-config. Install them:
-
-```bash
-# Ubuntu/Debian
-sudo apt install libpcap-dev pkg-config
-
-# Fedora/RHEL
-sudo dnf install libpcap-devel pkgconfig
-
-# Arch/Manjaro
-sudo pacman -S libpcap pkgconf
-
-# Then reinstall naabu
-go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
 ```
 
 ### Tools Not Found
