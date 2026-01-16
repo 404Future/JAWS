@@ -2,7 +2,7 @@
 
 ## Latest Updates - Fixed All Critical Issues
 
-### 🐛 Bug Fixes
+### Bug Fixes
 
 #### 1. Shell Detection Issue (CRITICAL FIX)
 **Problem:** Scripts were detecting bash even when user was running zsh
