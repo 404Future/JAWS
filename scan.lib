@@ -41,41 +41,41 @@ merge_results() {
 
 subdomain_enum() {
     echo -e "${YELLOW}[*] Phase 1: Subdomain Enumeration (Passive)${NC}"
+    echo -e "${BLUE}  [→] Starting all enumeration tools in parallel...${NC}"
     
     # Subfinder
     if check_tool subfinder; then
-        echo -e "${BLUE}  [→] Running subfinder...${NC}"
-        subfinder -d "$DOMAIN" -silent -o "$DIRECTORY/subfinder.txt" 2>/dev/null &
+        subfinder -d "$DOMAIN" -silent -o "$DIRECTORY/subfinder.txt" >/dev/null 2>&1 &
         SUBFINDER_PID=$!
     fi
     
     # Assetfinder
     if check_tool assetfinder; then
-        echo -e "${BLUE}  [→] Running assetfinder...${NC}"
         assetfinder --subs-only "$DOMAIN" > "$DIRECTORY/assetfinder.txt" 2>/dev/null &
         ASSETFINDER_PID=$!
     fi
     
-    # Amass (passive mode) - run in background with timeout
+    # Amass (passive mode) - completely silent
     if check_tool amass; then
-        echo -e "${BLUE}  [→] Running amass (passive, ${AMASS_TIMEOUT}s timeout)...${NC}"
         timeout $AMASS_TIMEOUT amass enum -passive -d "$DOMAIN" -o "$DIRECTORY/amass.txt" >/dev/null 2>&1 &
         AMASS_PID=$!
     fi
     
     # crt.sh
-    echo -e "${BLUE}  [→] Querying crt.sh...${NC}"
-    curl -s "https://crt.sh/?q=%.$DOMAIN&output=json" | \
+    curl -s "https://crt.sh/?q=%.$DOMAIN&output=json" 2>/dev/null | \
         jq -r '.[].name_value' 2>/dev/null | \
         sed 's/\*\.//g' | sort -u > "$DIRECTORY/crtsh.txt" &
     CRT_PID=$!
     
-    # Wait for all background jobs
-    echo -e "${BLUE}  [→] Waiting for all enumeration tools to complete...${NC}"
-    [ ! -z "$SUBFINDER_PID" ] && wait $SUBFINDER_PID
-    [ ! -z "$ASSETFINDER_PID" ] && wait $ASSETFINDER_PID
-    [ ! -z "$AMASS_PID" ] && wait $AMASS_PID
-    [ ! -z "$CRT_PID" ] && wait $CRT_PID
+    # Wait for all background jobs with progress indicator
+    echo -e "${BLUE}  [→] Enumeration in progress (timeout: ${AMASS_TIMEOUT}s)...${NC}"
+    
+    # Simple progress dots
+    while kill -0 $SUBFINDER_PID 2>/dev/null || kill -0 $ASSETFINDER_PID 2>/dev/null || kill -0 $AMASS_PID 2>/dev/null || kill -0 $CRT_PID 2>/dev/null; do
+        echo -n "."
+        sleep 2
+    done
+    echo ""
     
     # Show results
     echo -e "${GREEN}  [✓] Subfinder: $(wc -l < "$DIRECTORY/subfinder.txt" 2>/dev/null || echo 0) subdomains${NC}"
@@ -205,15 +205,24 @@ http_probe() {
         echo "$DOMAIN" > "$INPUT_FILE"
     fi
     
+    TOTAL_SUBS=$(wc -l < "$INPUT_FILE")
+    echo -e "${BLUE}  [→] Probing $TOTAL_SUBS hosts with httpx (this may take a while)...${NC}"
+    
     if check_tool httpx; then
-        echo -e "${BLUE}  [→] Probing HTTP services with httpx...${NC}"
-        
-        # Run httpx silently in background, save all results
+        # Run httpx completely silently, show progress dots
         cat "$INPUT_FILE" | \
             httpx -silent -title -status-code -tech-detect -content-length -follow-redirects \
-            -o "$DIRECTORY/httpx_results_all.txt" 2>/dev/null
+            -o "$DIRECTORY/httpx_results_all.txt" 2>/dev/null &
+        HTTPX_PID=$!
         
-        # Filter for interesting status codes (200, 201, 301, 302, 307, 308, 401, 403)
+        # Progress indicator
+        while kill -0 $HTTPX_PID 2>/dev/null; do
+            echo -n "."
+            sleep 3
+        done
+        echo ""
+        
+        # Filter for interesting status codes
         echo -e "${BLUE}  [→] Filtering for interesting status codes...${NC}"
         grep -E "\[($INTERESTING_STATUS_CODES)\]" "$DIRECTORY/httpx_results_all.txt" > "$DIRECTORY/httpx_results.txt" 2>/dev/null || touch "$DIRECTORY/httpx_results.txt"
         
@@ -227,7 +236,7 @@ http_probe() {
         echo -e "${GREEN}[✓] Interesting hosts (200/30x/40x): $(wc -l < "$DIRECTORY/live_hosts.txt" 2>/dev/null || echo 0)${NC}"
         
         # Show status code breakdown
-        if [ -f "$DIRECTORY/httpx_results_all.txt" ]; then
+        if [ -f "$DIRECTORY/httpx_results_all.txt" ] && [ -s "$DIRECTORY/httpx_results_all.txt" ]; then
             echo -e "${BLUE}  [→] Status code breakdown:${NC}"
             grep -oE '\[[0-9]{3}\]' "$DIRECTORY/httpx_results_all.txt" | sort | uniq -c | sort -rn | head -10 | while read count code; do
                 echo -e "${BLUE}      $code: $count hosts${NC}"
