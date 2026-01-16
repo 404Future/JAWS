@@ -99,7 +99,7 @@ subdomain_enum_quick() {
     
     if check_tool subfinder; then
         echo -e "${BLUE}  [→] Running subfinder...${NC}"
-        subfinder -d "$DOMAIN" -silent -o "$DIRECTORY/subdomains_all.txt" 2>/dev/null
+        subfinder -d "$DOMAIN" -silent -o "$DIRECTORY/subdomains_all.txt" >/dev/null 2>&1
         echo -e "${GREEN}[✓] Found $(wc -l < "$DIRECTORY/subdomains_all.txt") subdomains${NC}"
     else
         echo -e "${RED}[!] Subfinder not installed. Skipping.${NC}"
@@ -209,38 +209,44 @@ http_probe() {
     echo -e "${BLUE}  [→] Probing $TOTAL_SUBS hosts with httpx (this may take a while)...${NC}"
     
     if check_tool httpx; then
-        # Run httpx completely silently, show progress dots
+        # Run httpx completely silently with automatic http/https detection
         cat "$INPUT_FILE" | \
-            httpx -silent -title -status-code -tech-detect -content-length -follow-redirects \
+            httpx -silent -title -status-code -tech-detect -content-length \
+            -follow-redirects -no-color \
             -o "$DIRECTORY/httpx_results_all.txt" 2>/dev/null &
         HTTPX_PID=$!
         
         # Progress indicator
         while kill -0 $HTTPX_PID 2>/dev/null; do
-            echo -n "."
-            sleep 3
+            CURRENT=$(wc -l < "$DIRECTORY/httpx_results_all.txt" 2>/dev/null || echo 0)
+            echo -ne "\r${BLUE}  [→] Progress: $CURRENT/$TOTAL_SUBS hosts checked...${NC}"
+            sleep 2
         done
-        echo ""
+        echo -ne "\r${BLUE}  [→] Probing complete.                              ${NC}\n"
         
         # Filter for interesting status codes
         echo -e "${BLUE}  [→] Filtering for interesting status codes...${NC}"
-        grep -E "\[($INTERESTING_STATUS_CODES)\]" "$DIRECTORY/httpx_results_all.txt" > "$DIRECTORY/httpx_results.txt" 2>/dev/null || touch "$DIRECTORY/httpx_results.txt"
-        
-        # Extract just the URLs for interesting hosts
-        awk '{print $1}' "$DIRECTORY/httpx_results.txt" > "$DIRECTORY/live_hosts.txt"
-        
-        # Also save all live hosts (any status code)
-        awk '{print $1}' "$DIRECTORY/httpx_results_all.txt" > "$DIRECTORY/live_hosts_all.txt"
-        
-        echo -e "${GREEN}[✓] Total live hosts: $(wc -l < "$DIRECTORY/live_hosts_all.txt" 2>/dev/null || echo 0)${NC}"
-        echo -e "${GREEN}[✓] Interesting hosts (200/30x/40x): $(wc -l < "$DIRECTORY/live_hosts.txt" 2>/dev/null || echo 0)${NC}"
-        
-        # Show status code breakdown
         if [ -f "$DIRECTORY/httpx_results_all.txt" ] && [ -s "$DIRECTORY/httpx_results_all.txt" ]; then
+            grep -E "\[($INTERESTING_STATUS_CODES)\]" "$DIRECTORY/httpx_results_all.txt" > "$DIRECTORY/httpx_results.txt" 2>/dev/null || touch "$DIRECTORY/httpx_results.txt"
+            
+            # Extract just the URLs for interesting hosts
+            awk '{print $1}' "$DIRECTORY/httpx_results.txt" > "$DIRECTORY/live_hosts.txt"
+            
+            # Also save all live hosts (any status code)
+            awk '{print $1}' "$DIRECTORY/httpx_results_all.txt" > "$DIRECTORY/live_hosts_all.txt"
+            
+            echo -e "${GREEN}[✓] Total live hosts: $(wc -l < "$DIRECTORY/live_hosts_all.txt" 2>/dev/null || echo 0)${NC}"
+            echo -e "${GREEN}[✓] Interesting hosts (200/30x/40x): $(wc -l < "$DIRECTORY/live_hosts.txt" 2>/dev/null || echo 0)${NC}"
+            
+            # Show status code breakdown
             echo -e "${BLUE}  [→] Status code breakdown:${NC}"
             grep -oE '\[[0-9]{3}\]' "$DIRECTORY/httpx_results_all.txt" | sort | uniq -c | sort -rn | head -10 | while read count code; do
                 echo -e "${BLUE}      $code: $count hosts${NC}"
             done
+        else
+            echo -e "${YELLOW}[!] No live HTTP/HTTPS hosts found${NC}"
+            touch "$DIRECTORY/live_hosts.txt"
+            touch "$DIRECTORY/live_hosts_all.txt"
         fi
     else
         echo -e "${RED}[!] httpx not installed${NC}"
