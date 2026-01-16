@@ -80,15 +80,18 @@ install_go() {
         # Manual installation
         wget https://go.dev/dl/go1.21.5.linux-amd64.tar.gz
         sudo tar -C /usr/local -xzf go1.21.5.linux-amd64.tar.gz
-        echo 'export PATH=$PATH:/usr/local/go/bin' >> ~/.bashrc
-        echo 'export PATH=$PATH:~/go/bin' >> ~/.bashrc
-        source ~/.bashrc
+        rm go1.21.5.linux-amd64.tar.gz
+        
+        if ! grep -q "export PATH=\$PATH:/usr/local/go/bin" "$SHELL_RC"; then
+            echo 'export PATH=$PATH:/usr/local/go/bin' >> "$SHELL_RC"
+        fi
+        if ! grep -q "export PATH=\$PATH:~/go/bin" "$SHELL_RC"; then
+            echo 'export PATH=$PATH:~/go/bin' >> "$SHELL_RC"
+        fi
+        export PATH=$PATH:/usr/local/go/bin:~/go/bin
     fi
     
-    # Set Go environment variables
-    if ! grep -q "export PATH=\$PATH:~/go/bin" "$SHELL_RC"; then
-        echo 'export PATH=$PATH:~/go/bin' >> "$SHELL_RC"
-    fi
+    # Set Go environment variables for current session
     export PATH=$PATH:~/go/bin
     
     echo -e "${GREEN}[✓] Go installed${NC}"
