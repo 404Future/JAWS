@@ -1,6 +1,83 @@
 # JAWS Changelog
 
-## Latest Updates - Fixed All Critical Issues
+## Latest Updates - Performance & UX Improvements
+
+### Performance Improvements
+
+#### 1. Parallel Subdomain Enumeration
+**What Changed:** All subdomain enumeration tools now run in parallel
+**Impact:** Much faster Phase 1 - tools run simultaneously instead of sequentially
+**Details:**
+- subfinder, assetfinder, amass, and crt.sh all run concurrently
+- Progress shown as jobs complete
+- Total time reduced from ~10min to ~5min for large targets
+
+**File Updated:**
+- `scan.lib` - `subdomain_enum()` function
+
+#### 2. Silent Background Processing
+**What Changed:** Tools run silently in background, output only shown when complete
+**Impact:** Clean terminal output, no spam from thousands of subdomains
+**Details:**
+- amass runs with timeout in background (no live output)
+- Results summarized after completion
+- All output saved to files
+
+**File Updated:**
+- `scan.lib` - Multiple enumeration functions
+
+### Smart Filtering
+
+#### 3. HTTP Status Code Filtering
+**What Changed:** httpx results now filtered by interesting status codes
+**Impact:** Focus on actionable targets, skip errors and client issues
+**Default Filter:**
+- ✅ 200, 201 - Successful responses
+- ✅ 301, 302, 307, 308 - Redirects
+- ✅ 401, 403 - Auth required (potential targets)
+- ❌ 400, 404, 500, 502, 503 - Errors (saved but not prioritized)
+
+**Files Created:**
+- `httpx_results_all.txt` - All responses (any status code)
+- `httpx_results.txt` - Filtered (interesting codes only)
+- `live_hosts_all.txt` - All live hosts
+- `live_hosts.txt` - Filtered live hosts
+
+**File Updated:**
+- `scan.lib` - `http_probe()` function
+
+#### 4. Status Code Statistics
+**What Changed:** Shows breakdown of HTTP status codes found
+**Impact:** Quick overview of what's accessible
+**Example Output:**
+```
+Status code breakdown:
+  [200]: 1,234 hosts
+  [301]: 456 hosts
+  [403]: 78 hosts
+  [401]: 23 hosts
+```
+
+### Configuration Options
+
+#### 5. Customizable Settings
+**What Changed:** Added configuration section to scan.lib
+**Impact:** Easy to customize without editing code
+**Settings:**
+```bash
+# Status codes to filter
+INTERESTING_STATUS_CODES="200|201|301|302|307|308|401|403"
+
+# Amass timeout (seconds)
+AMASS_TIMEOUT=300
+```
+
+**File Updated:**
+- `scan.lib` - Added configuration section at top
+
+---
+
+## Previous Updates - Fixed All Critical Issues
 
 ### Bug Fixes
 
@@ -144,25 +221,25 @@ source ~/.zshrc  # or ~/.bashrc
 ## Known Working Configuration
 
 **Tested on:**
-- ✅ Ubuntu/Debian with zsh 
-- ✅ Ubuntu/Debian with bash 
+- Ubuntu/Debian with zsh ✅
+- Ubuntu/Debian with bash ✅
 
 **All 15 tools verified:**
-- ✅ subfinder 
-- ✅ httpx 
-- ✅ nuclei 
-- ✅ katana 
-- ✅ naabu 
-- ✅ dnsx 
-- ✅ assetfinder 
-- ✅ waybackurls 
-- ✅ gau 
-- ✅ gowitness 
-- ✅ puredns 
-- ✅ amass 
-- ✅ nmap 
-- ✅ masscan 
-- ✅ jq 
+- subfinder ✅
+- httpx ✅
+- nuclei ✅
+- katana ✅
+- naabu ✅
+- dnsx ✅
+- assetfinder ✅
+- waybackurls ✅
+- gau ✅
+- gowitness ✅
+- puredns ✅
+- amass ✅
+- nmap ✅
+- masscan ✅
+- jq ✅
 
 ---
 
