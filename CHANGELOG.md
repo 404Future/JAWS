@@ -144,25 +144,25 @@ source ~/.zshrc  # or ~/.bashrc
 ## Known Working Configuration
 
 **Tested on:**
-- Ubuntu/Debian with zsh ✅
-- Ubuntu/Debian with bash ✅
+- ✅ Ubuntu/Debian with zsh 
+- ✅ Ubuntu/Debian with bash 
 
 **All 15 tools verified:**
-- subfinder ✅
-- httpx ✅
-- nuclei ✅
-- katana ✅
-- naabu ✅
-- dnsx ✅
-- assetfinder ✅
-- waybackurls ✅
-- gau ✅
-- gowitness ✅
-- puredns ✅
-- amass ✅
-- nmap ✅
-- masscan ✅
-- jq ✅
+- ✅ subfinder 
+- ✅ httpx 
+- ✅ nuclei 
+- ✅ katana 
+- ✅ naabu 
+- ✅ dnsx 
+- ✅ assetfinder 
+- ✅ waybackurls 
+- ✅ gau 
+- ✅ gowitness 
+- ✅ puredns 
+- ✅ amass 
+- ✅ nmap 
+- ✅ masscan 
+- ✅ jq 
 
 ---
 
