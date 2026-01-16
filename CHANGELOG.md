@@ -218,4 +218,4 @@ If you still have issues after these fixes:
 3. Check `echo $PATH | grep go/bin` - is it in PATH?
 4. Try `source ./fix_path.sh` for quick fix
 
-All critical bugs have been resolved! 🎉
+All critical bugs have been resolved! 
