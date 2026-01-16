@@ -4,6 +4,17 @@
 # Contains all reconnaissance tool functions
 
 # ============================================================================
+# CONFIGURATION
+# ============================================================================
+
+# Status codes to consider "interesting" for filtering
+# 200=OK, 201=Created, 301/302/307/308=Redirects, 401=Unauthorized, 403=Forbidden
+INTERESTING_STATUS_CODES="200|201|301|302|307|308|401|403"
+
+# Amass timeout (seconds) - reduce for faster scans
+AMASS_TIMEOUT=300
+
+# ============================================================================
 # UTILITY FUNCTIONS
 # ============================================================================
 
@@ -34,29 +45,42 @@ subdomain_enum() {
     # Subfinder
     if check_tool subfinder; then
         echo -e "${BLUE}  [→] Running subfinder...${NC}"
-        subfinder -d "$DOMAIN" -silent -o "$DIRECTORY/subfinder.txt" 2>/dev/null
-        echo -e "${GREEN}  [✓] Subfinder: $(wc -l < "$DIRECTORY/subfinder.txt" 2>/dev/null || echo 0) subdomains${NC}"
+        subfinder -d "$DOMAIN" -silent -o "$DIRECTORY/subfinder.txt" 2>/dev/null &
+        SUBFINDER_PID=$!
     fi
     
     # Assetfinder
     if check_tool assetfinder; then
         echo -e "${BLUE}  [→] Running assetfinder...${NC}"
-        assetfinder --subs-only "$DOMAIN" > "$DIRECTORY/assetfinder.txt" 2>/dev/null
-        echo -e "${GREEN}  [✓] Assetfinder: $(wc -l < "$DIRECTORY/assetfinder.txt" 2>/dev/null || echo 0) subdomains${NC}"
+        assetfinder --subs-only "$DOMAIN" > "$DIRECTORY/assetfinder.txt" 2>/dev/null &
+        ASSETFINDER_PID=$!
     fi
     
-    # Amass (passive mode)
+    # Amass (passive mode) - run in background with timeout
     if check_tool amass; then
-        echo -e "${BLUE}  [→] Running amass (passive)...${NC}"
-        timeout 300 amass enum -passive -d "$DOMAIN" -o "$DIRECTORY/amass.txt" 2>/dev/null
-        echo -e "${GREEN}  [✓] Amass: $(wc -l < "$DIRECTORY/amass.txt" 2>/dev/null || echo 0) subdomains${NC}"
+        echo -e "${BLUE}  [→] Running amass (passive, ${AMASS_TIMEOUT}s timeout)...${NC}"
+        timeout $AMASS_TIMEOUT amass enum -passive -d "$DOMAIN" -o "$DIRECTORY/amass.txt" >/dev/null 2>&1 &
+        AMASS_PID=$!
     fi
     
     # crt.sh
     echo -e "${BLUE}  [→] Querying crt.sh...${NC}"
     curl -s "https://crt.sh/?q=%.$DOMAIN&output=json" | \
         jq -r '.[].name_value' 2>/dev/null | \
-        sed 's/\*\.//g' | sort -u > "$DIRECTORY/crtsh.txt"
+        sed 's/\*\.//g' | sort -u > "$DIRECTORY/crtsh.txt" &
+    CRT_PID=$!
+    
+    # Wait for all background jobs
+    echo -e "${BLUE}  [→] Waiting for all enumeration tools to complete...${NC}"
+    [ ! -z "$SUBFINDER_PID" ] && wait $SUBFINDER_PID
+    [ ! -z "$ASSETFINDER_PID" ] && wait $ASSETFINDER_PID
+    [ ! -z "$AMASS_PID" ] && wait $AMASS_PID
+    [ ! -z "$CRT_PID" ] && wait $CRT_PID
+    
+    # Show results
+    echo -e "${GREEN}  [✓] Subfinder: $(wc -l < "$DIRECTORY/subfinder.txt" 2>/dev/null || echo 0) subdomains${NC}"
+    echo -e "${GREEN}  [✓] Assetfinder: $(wc -l < "$DIRECTORY/assetfinder.txt" 2>/dev/null || echo 0) subdomains${NC}"
+    echo -e "${GREEN}  [✓] Amass: $(wc -l < "$DIRECTORY/amass.txt" 2>/dev/null || echo 0) subdomains${NC}"
     echo -e "${GREEN}  [✓] crt.sh: $(wc -l < "$DIRECTORY/crtsh.txt" 2>/dev/null || echo 0) subdomains${NC}"
     
     # Merge all results
@@ -74,6 +98,7 @@ subdomain_enum_quick() {
     echo -e "${YELLOW}[*] Phase 1: Quick Subdomain Enumeration${NC}"
     
     if check_tool subfinder; then
+        echo -e "${BLUE}  [→] Running subfinder...${NC}"
         subfinder -d "$DOMAIN" -silent -o "$DIRECTORY/subdomains_all.txt" 2>/dev/null
         echo -e "${GREEN}[✓] Found $(wc -l < "$DIRECTORY/subdomains_all.txt") subdomains${NC}"
     else
@@ -182,14 +207,32 @@ http_probe() {
     
     if check_tool httpx; then
         echo -e "${BLUE}  [→] Probing HTTP services with httpx...${NC}"
+        
+        # Run httpx silently in background, save all results
         cat "$INPUT_FILE" | \
-            httpx -silent -title -status-code -tech-detect -content-length \
-            -o "$DIRECTORY/httpx_results.txt" 2>/dev/null
+            httpx -silent -title -status-code -tech-detect -content-length -follow-redirects \
+            -o "$DIRECTORY/httpx_results_all.txt" 2>/dev/null
         
-        # Extract just the URLs
-        cat "$DIRECTORY/httpx_results.txt" | awk '{print $1}' > "$DIRECTORY/live_hosts.txt"
+        # Filter for interesting status codes (200, 201, 301, 302, 307, 308, 401, 403)
+        echo -e "${BLUE}  [→] Filtering for interesting status codes...${NC}"
+        grep -E "\[($INTERESTING_STATUS_CODES)\]" "$DIRECTORY/httpx_results_all.txt" > "$DIRECTORY/httpx_results.txt" 2>/dev/null || touch "$DIRECTORY/httpx_results.txt"
         
-        echo -e "${GREEN}[✓] Live hosts: $(wc -l < "$DIRECTORY/live_hosts.txt" 2>/dev/null || echo 0)${NC}"
+        # Extract just the URLs for interesting hosts
+        awk '{print $1}' "$DIRECTORY/httpx_results.txt" > "$DIRECTORY/live_hosts.txt"
+        
+        # Also save all live hosts (any status code)
+        awk '{print $1}' "$DIRECTORY/httpx_results_all.txt" > "$DIRECTORY/live_hosts_all.txt"
+        
+        echo -e "${GREEN}[✓] Total live hosts: $(wc -l < "$DIRECTORY/live_hosts_all.txt" 2>/dev/null || echo 0)${NC}"
+        echo -e "${GREEN}[✓] Interesting hosts (200/30x/40x): $(wc -l < "$DIRECTORY/live_hosts.txt" 2>/dev/null || echo 0)${NC}"
+        
+        # Show status code breakdown
+        if [ -f "$DIRECTORY/httpx_results_all.txt" ]; then
+            echo -e "${BLUE}  [→] Status code breakdown:${NC}"
+            grep -oE '\[[0-9]{3}\]' "$DIRECTORY/httpx_results_all.txt" | sort | uniq -c | sort -rn | head -10 | while read count code; do
+                echo -e "${BLUE}      $code: $count hosts${NC}"
+            done
+        fi
     else
         echo -e "${RED}[!] httpx not installed${NC}"
     fi
