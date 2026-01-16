@@ -196,9 +196,9 @@ Each scan creates a directory named `{domain}_recon/` containing:
 
 ```
 example.com_recon/
-├── scan.log                    # Scan activity log
-├── report.html                 # HTML report with stats
-├── report.txt                  # Text-based report
+├── scan.log                   # Scan activity log
+├── report.html                # HTML report with stats
+├── report.txt                 # Text-based report
 ├── subdomains_all.txt         # All discovered subdomains
 ├── subfinder.txt              # Subfinder results
 ├── assetfinder.txt            # Assetfinder results
