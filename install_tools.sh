@@ -23,19 +23,16 @@ if [ "$EUID" -ne 0 ] && [ "$1" != "--user" ]; then
     echo -e "${YELLOW}[!] Some tools require sudo. Run with sudo or use --user flag for user installation only${NC}"
 fi
 
-# Detect shell
+# Detect shell - use actual user shell, not script shell
 detect_shell() {
-    if [ -n "$ZSH_VERSION" ]; then
+    ACTUAL_SHELL=$(basename "$SHELL")
+    if [ "$ACTUAL_SHELL" = "zsh" ]; then
         echo "zsh"
-    elif [ -n "$BASH_VERSION" ]; then
+    elif [ "$ACTUAL_SHELL" = "bash" ]; then
         echo "bash"
     else
-        # Fallback to checking SHELL variable
-        case "$SHELL" in
-            */zsh) echo "zsh" ;;
-            */bash) echo "bash" ;;
-            *) echo "bash" ;; # default
-        esac
+        # Fallback
+        echo "bash"
     fi
 }
 
@@ -46,7 +43,7 @@ else
     SHELL_RC="$HOME/.bashrc"
 fi
 
-echo -e "${BLUE}[*] Detected shell: $DETECTED_SHELL${NC}"
+echo -e "${BLUE}[*] Detected shell: $DETECTED_SHELL (from \$SHELL: $SHELL)${NC}"
 echo -e "${BLUE}[*] Using config file: $SHELL_RC${NC}"
 
 # Detect OS
