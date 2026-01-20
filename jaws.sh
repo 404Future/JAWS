@@ -66,7 +66,7 @@ Other:
 
 Modules:
     subdomain    - Subdomain enumeration (amass, subfinder, sublist3r)
-    portscan     - Port scanning (rustscan, naabu, nuclei)
+    portscan     - Port scanning (naabu, nuclei)
     urls         - URL discovery (gau, katana)
     webvuln      - Web vulnerability scanning (nuclei, nikto)
     dirbust      - Directory bruteforcing (gobuster)
@@ -178,6 +178,24 @@ log_verbose() {
 }
 
 ################################################################################
+# Progress Indicator
+################################################################################
+show_progress() {
+    local pid=$1
+    local message=$2
+    local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
+    local delay=0.1
+    
+    while kill -0 $pid 2>/dev/null; do
+        local temp=${spinstr#?}
+        printf "\r${CYAN}[%c]${NC} %s" "$spinstr" "$message"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep $delay
+    done
+    printf "\r"
+}
+
+################################################################################
 # Dependency Check
 ################################################################################
 check_dependencies() {
@@ -190,7 +208,7 @@ check_dependencies() {
     fi
     
     if should_run_module "portscan"; then
-        required_tools+=(rustscan naabu nuclei)
+        required_tools+=(naabu nuclei nmap)
     fi
     
     if should_run_module "urls"; then
@@ -252,24 +270,32 @@ run_subdomain_enum() {
     
     # Amass
     log_verbose "Running amass..."
-    amass enum -d "$TARGET" -o "$OUTPUT_DIR/amass.txt" 2>/dev/null
+    amass enum -d "$TARGET" -o "$OUTPUT_DIR/amass.txt" 2>/dev/null &
+    show_progress $! "Running amass..."
+    wait $!
     touch "$OUTPUT_DIR/amass.txt" 2>/dev/null
     
     # Subfinder
     log_verbose "Running subfinder..."
-    subfinder -d "$TARGET" -o "$OUTPUT_DIR/subfinder.txt" -silent
+    subfinder -d "$TARGET" -o "$OUTPUT_DIR/subfinder.txt" -silent &
+    show_progress $! "Running subfinder..."
+    wait $!
     touch "$OUTPUT_DIR/subfinder.txt" 2>/dev/null
     
     # Sublist3r
     log_verbose "Running sublist3r..."
-    sublist3r -d "$TARGET" -o "$OUTPUT_DIR/sublist3r.txt" 2>/dev/null
+    sublist3r -d "$TARGET" -o "$OUTPUT_DIR/sublist3r.txt" 2>/dev/null &
+    show_progress $! "Running sublist3r..."
+    wait $!
     touch "$OUTPUT_DIR/sublist3r.txt" 2>/dev/null
     
     # Merge and filter live subdomains
     log_info "Filtering live subdomains..."
     cat "$OUTPUT_DIR"/{amass,subfinder,sublist3r}.txt 2>/dev/null | \
         sort -u | \
-        httpx -silent -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/live.txt"
+        httpx -silent -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/live.txt" &
+    show_progress $! "Filtering live subdomains with httpx..."
+    wait $!
     
     # Ensure file exists for counting
     touch "$OUTPUT_DIR/live.txt" 2>/dev/null
@@ -283,15 +309,16 @@ run_subdomain_enum() {
 run_port_scan() {
     log_info "Starting port scanning..."
     
-    # Rustscan for fast discovery
-    log_verbose "Running rustscan..."
-    rustscan -a "$TARGET" -t 3000 --ulimit 5000 -- -sV --top-ports 1000 -oG "$OUTPUT_DIR/rustscan.gnmap" 2>/dev/null
+    if [[ ! -f "$OUTPUT_DIR/live.txt" ]]; then
+        log_warning "No live subdomains found, scanning target domain only"
+        echo "$TARGET" > "$OUTPUT_DIR/live.txt"
+    fi
     
-    # Extract open ports and verify with naabu
-    log_verbose "Verifying ports with naabu..."
-    grep "open" "$OUTPUT_DIR/rustscan.gnmap" 2>/dev/null | \
-        awk '{print $2 ":" $3}' | \
-        naabu -verify -silent -o "$OUTPUT_DIR/naabu.txt"
+    # Naabu for port discovery
+    log_verbose "Running naabu..."
+    naabu -list "$OUTPUT_DIR/live.txt" -top-ports 1000 -silent -o "$OUTPUT_DIR/naabu.txt" 2>/dev/null &
+    show_progress $! "Scanning ports with naabu..."
+    wait $!
     
     # Ensure file exists
     touch "$OUTPUT_DIR/naabu.txt" 2>/dev/null
@@ -299,7 +326,9 @@ run_port_scan() {
     # Run nuclei on discovered services only if we have targets
     if [[ -s "$OUTPUT_DIR/naabu.txt" ]]; then
         log_info "Scanning for network vulnerabilities..."
-        nuclei -l "$OUTPUT_DIR/naabu.txt" -t network/ -t cves/ -silent -o "$OUTPUT_DIR/naabu-vulns.txt" 2>/dev/null
+        nuclei -l "$OUTPUT_DIR/naabu.txt" -t network/ -t cves/ -silent -o "$OUTPUT_DIR/naabu-vulns.txt" 2>/dev/null &
+        show_progress $! "Running nuclei on discovered ports..."
+        wait $!
         touch "$OUTPUT_DIR/naabu-vulns.txt" 2>/dev/null
     else
         log_warning "No ports found for vulnerability scanning"
@@ -323,19 +352,25 @@ run_url_discovery() {
     
     # Passive collection with gau
     log_verbose "Running gau (passive)..."
-    cat "$OUTPUT_DIR/live.txt" | gau --subs > "$OUTPUT_DIR/gau.txt" 2>/dev/null
+    cat "$OUTPUT_DIR/live.txt" | gau --subs > "$OUTPUT_DIR/gau.txt" 2>/dev/null &
+    show_progress $! "Collecting URLs with gau (passive)..."
+    wait $!
     
     # Active crawling with katana
     log_verbose "Running katana (active)..."
     cat "$OUTPUT_DIR/live.txt" | \
-        katana -silent -jc -ef js,css -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/katana.txt" 2>/dev/null
+        katana -silent -jc -ef js,css -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/katana.txt" 2>/dev/null &
+    show_progress $! "Crawling with katana (active)..."
+    wait $!
     
     # Merge and filter live URLs
     log_info "Filtering live URLs..."
     cat "$OUTPUT_DIR/gau.txt" "$OUTPUT_DIR/katana.txt" 2>/dev/null | \
         sort -u | \
         grep -E "^https?://" | \
-        httpx -mc 200-399 -silent -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/all_live_urls.txt"
+        httpx -mc 200-399 -silent -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/all_live_urls.txt" &
+    show_progress $! "Verifying live URLs with httpx..."
+    wait $!
     
     # Ensure file exists for counting
     touch "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null
@@ -364,12 +399,16 @@ run_web_vuln_scan() {
         -t cves/ -t misconfig/ \
         -silent \
         -H "User-Agent: $USER_AGENT" \
-        -o "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null
+        -o "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null &
+    show_progress $! "Scanning for web vulnerabilities with nuclei..."
+    wait $!
     
     # Nikto scan
     log_verbose "Running nikto..."
     cat "$OUTPUT_DIR/live.txt" 2>/dev/null | \
-        nikto -h - -Format json -useragent "$USER_AGENT" -o "$OUTPUT_DIR/nikto.json" 2>/dev/null
+        nikto -h - -Format json -useragent "$USER_AGENT" -o "$OUTPUT_DIR/nikto.json" 2>/dev/null &
+    show_progress $! "Running nikto web scanner..."
+    wait $!
     
     local vuln_count=$(wc -l < "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || echo 0)
     log_success "Web scan complete, found $vuln_count potential vulnerabilities → $OUTPUT_DIR/http-vulns.txt"
@@ -473,7 +512,7 @@ run_scan() {
     [[ -f "$OUTPUT_DIR/naabu-vulns.txt" ]] && echo "  → $OUTPUT_DIR/naabu-vulns.txt (network vulnerabilities)"
     [[ -f "$OUTPUT_DIR/http-vulns.txt" ]] && echo "  → $OUTPUT_DIR/http-vulns.txt (web vulnerabilities)"
     [[ -f "$OUTPUT_DIR/all_live_urls.txt" ]] && echo "  → $OUTPUT_DIR/all_live_urls.txt (endpoints for manual testing)"
-    [[ -f "$OUTPUT_DIR/rustscan.gnmap" ]] && echo "  → $OUTPUT_DIR/rustscan.gnmap (ports for deeper nmap scan)"
+    [[ -f "$OUTPUT_DIR/naabu.txt" ]] && echo "  → $OUTPUT_DIR/naabu.txt (ports for deeper nmap scan)"
 }
 
 ################################################################################
