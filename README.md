@@ -1,4 +1,4 @@
-# JAWS V3.0 - Just Another Web Scanner
+# JAWS - Just Another Web Scanner
 
 [![GitHub](https://img.shields.io/badge/GitHub-404Future%2FJAWS-blue?logo=github)](https://github.com/404Future/JAWS)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
