@@ -1,5 +1,9 @@
 # JAWS V3.0 - Just Another Web Scanner
 
+[![GitHub](https://img.shields.io/badge/GitHub-404Future%2FJAWS-blue?logo=github)](https://github.com/404Future/JAWS)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/Version-3.0.0-orange.svg)](https://github.com/404Future/JAWS/releases)
+
 A powerful, modular web reconnaissance and vulnerability scanner written in pure bash.
 
 ## 🎯 Features
@@ -20,14 +24,17 @@ A powerful, modular web reconnaissance and vulnerability scanner written in pure
 - **Modular Architecture**
   - Run all modules or select specific ones
   - Skip unwanted modules
-  - Passive-only mode available
 
 ## 📦 Installation
 
 ### Quick Install (Automated)
 
 ```bash
-cd /home/nofx/.gemini/antigravity/scratch/jaws-v3.0
+# Clone the repository
+git clone https://github.com/404Future/JAWS.git
+cd JAWS
+
+# Run the installation script
 chmod +x install_tools.sh jaws.sh
 ./install_tools.sh
 ```
@@ -43,7 +50,7 @@ The installation script will:
 **Supported OS:** Ubuntu, Debian, Kali, Fedora, RHEL, CentOS, Arch, Manjaro
 
 > [!NOTE]
-> After installation, restart your shell or run `source ~/.bashrc` to update your PATH.
+> After installation, restart your shell or run `source ~/.bashrc` (bash) or `source ~/.zshrc` (zsh) to update your PATH.
 
 ### Manual Installation
 
@@ -205,6 +212,11 @@ done < output/example.com/live.txt
 4. **Respect scope** - only scan authorized targets
 
 ## 🤝 Contributing
+
+Contributions are welcome! Please visit the [official repository](https://github.com/404Future/JAWS) to:
+- Report bugs
+- Request features
+- Submit pull requests
 
 This is JAWS V3.0 - built for speed, flexibility, and bug bounty compliance!
 
