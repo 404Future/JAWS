@@ -295,7 +295,7 @@ verify_tools() {
     
     if [[ ${#missing[@]} -eq 0 ]]; then
         echo -e "${GREEN}[+] All tools installed successfully!${NC}"
-        echo -e "${BLUE}[*] You may need to restart your shell or run: source ~/.bashrc${NC}"
+        echo -e "${BLUE}[*] You may need to restart your shell or run: source $RC_FILE${NC}"
         return 0
     else
         echo -e "${YELLOW}[!] Missing tools: ${missing[*]}${NC}"
