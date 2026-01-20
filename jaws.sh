@@ -178,24 +178,6 @@ log_verbose() {
 }
 
 ################################################################################
-# Progress Indicator
-################################################################################
-show_progress() {
-    local pid=$1
-    local message=$2
-    local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
-    local delay=0.1
-    
-    while kill -0 $pid 2>/dev/null; do
-        local temp=${spinstr#?}
-        printf "\r${CYAN}[%c]${NC} %s" "$spinstr" "$message"
-        local spinstr=$temp${spinstr%"$temp"}
-        sleep $delay
-    done
-    printf "\r"
-}
-
-################################################################################
 # Dependency Check
 ################################################################################
 check_dependencies() {
@@ -270,32 +252,24 @@ run_subdomain_enum() {
     
     # Amass
     log_verbose "Running amass..."
-    amass enum -d "$TARGET" -o "$OUTPUT_DIR/amass.txt" 2>/dev/null &
-    show_progress $! "Running amass..."
-    wait $!
+    amass enum -d "$TARGET" -o "$OUTPUT_DIR/amass.txt" 2>/dev/null
     touch "$OUTPUT_DIR/amass.txt" 2>/dev/null
     
     # Subfinder
     log_verbose "Running subfinder..."
-    subfinder -d "$TARGET" -o "$OUTPUT_DIR/subfinder.txt" -silent &
-    show_progress $! "Running subfinder..."
-    wait $!
+    subfinder -d "$TARGET" -o "$OUTPUT_DIR/subfinder.txt" -silent
     touch "$OUTPUT_DIR/subfinder.txt" 2>/dev/null
     
     # Sublist3r
     log_verbose "Running sublist3r..."
-    sublist3r -d "$TARGET" -o "$OUTPUT_DIR/sublist3r.txt" 2>/dev/null &
-    show_progress $! "Running sublist3r..."
-    wait $!
+    sublist3r -d "$TARGET" -o "$OUTPUT_DIR/sublist3r.txt" 2>/dev/null
     touch "$OUTPUT_DIR/sublist3r.txt" 2>/dev/null
     
     # Merge and filter live subdomains
     log_info "Filtering live subdomains..."
     cat "$OUTPUT_DIR"/{amass,subfinder,sublist3r}.txt 2>/dev/null | \
         sort -u | \
-        httpx -silent -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/live.txt" &
-    show_progress $! "Filtering live subdomains with httpx..."
-    wait $!
+        httpx -silent -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/live.txt"
     
     # Ensure file exists for counting
     touch "$OUTPUT_DIR/live.txt" 2>/dev/null
@@ -316,9 +290,7 @@ run_port_scan() {
     
     # Naabu for port discovery
     log_verbose "Running naabu..."
-    naabu -list "$OUTPUT_DIR/live.txt" -top-ports 1000 -silent -o "$OUTPUT_DIR/naabu.txt" 2>/dev/null &
-    show_progress $! "Scanning ports with naabu..."
-    wait $!
+    naabu -list "$OUTPUT_DIR/live.txt" -top-ports 1000 -silent -o "$OUTPUT_DIR/naabu.txt" 2>/dev/null
     
     # Ensure file exists
     touch "$OUTPUT_DIR/naabu.txt" 2>/dev/null
@@ -326,9 +298,7 @@ run_port_scan() {
     # Run nuclei on discovered services only if we have targets
     if [[ -s "$OUTPUT_DIR/naabu.txt" ]]; then
         log_info "Scanning for network vulnerabilities..."
-        nuclei -l "$OUTPUT_DIR/naabu.txt" -t network/ -t cves/ -silent -o "$OUTPUT_DIR/naabu-vulns.txt" 2>/dev/null &
-        show_progress $! "Running nuclei on discovered ports..."
-        wait $!
+        nuclei -l "$OUTPUT_DIR/naabu.txt" -t network/ -t cves/ -silent -o "$OUTPUT_DIR/naabu-vulns.txt" 2>/dev/null
         touch "$OUTPUT_DIR/naabu-vulns.txt" 2>/dev/null
     else
         log_warning "No ports found for vulnerability scanning"
@@ -350,27 +320,52 @@ run_url_discovery() {
         return
     fi
     
+    local total_subdomains=$(wc -l < "$OUTPUT_DIR/live.txt")
+    local current=0
+    
     # Passive collection with gau
     log_verbose "Running gau (passive)..."
-    cat "$OUTPUT_DIR/live.txt" | gau --subs > "$OUTPUT_DIR/gau.txt" 2>/dev/null &
-    show_progress $! "Collecting URLs with gau (passive)..."
-    wait $!
+    {
+        while IFS= read -r subdomain; do
+            current=$((current + 1))
+            printf "\r${CYAN}[*]${NC} Collecting URLs with gau... [%d/%d subdomains]" "$current" "$total_subdomains"
+            echo "$subdomain"
+        done < "$OUTPUT_DIR/live.txt" | gau --subs > "$OUTPUT_DIR/gau.txt" 2>/dev/null
+        printf "\r\033[K"  # Clear the line
+    }
     
     # Active crawling with katana
+    current=0
     log_verbose "Running katana (active)..."
-    cat "$OUTPUT_DIR/live.txt" | \
-        katana -silent -jc -ef js,css -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/katana.txt" 2>/dev/null &
-    show_progress $! "Crawling with katana (active)..."
-    wait $!
+    {
+        while IFS= read -r subdomain; do
+            current=$((current + 1))
+            printf "\r${CYAN}[*]${NC} Crawling with katana... [%d/%d subdomains]" "$current" "$total_subdomains"
+            echo "$subdomain"
+        done < "$OUTPUT_DIR/live.txt" | \
+            katana -silent -jc -ef js,css -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/katana.txt" 2>/dev/null
+        printf "\r\033[K"  # Clear the line
+    }
     
     # Merge and filter live URLs
     log_info "Filtering live URLs..."
-    cat "$OUTPUT_DIR/gau.txt" "$OUTPUT_DIR/katana.txt" 2>/dev/null | \
-        sort -u | \
-        grep -E "^https?://" | \
-        httpx -mc 200-399 -silent -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/all_live_urls.txt" &
-    show_progress $! "Verifying live URLs with httpx..."
-    wait $!
+    local total_urls=$(cat "$OUTPUT_DIR/gau.txt" "$OUTPUT_DIR/katana.txt" 2>/dev/null | sort -u | grep -E "^https?://" | wc -l)
+    current=0
+    
+    {
+        cat "$OUTPUT_DIR/gau.txt" "$OUTPUT_DIR/katana.txt" 2>/dev/null | \
+            sort -u | \
+            grep -E "^https?://" | \
+            while IFS= read -r url; do
+                current=$((current + 1))
+                if (( current % 10 == 0 )); then
+                    printf "\r${CYAN}[*]${NC} Verifying URLs with httpx... [%d/%d URLs]" "$current" "$total_urls"
+                fi
+                echo "$url"
+            done | \
+            httpx -mc 200-399 -silent -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/all_live_urls.txt"
+        printf "\r\033[K"  # Clear the line
+    }
     
     # Ensure file exists for counting
     touch "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null
@@ -399,16 +394,12 @@ run_web_vuln_scan() {
         -t cves/ -t misconfig/ \
         -silent \
         -H "User-Agent: $USER_AGENT" \
-        -o "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null &
-    show_progress $! "Scanning for web vulnerabilities with nuclei..."
-    wait $!
+        -o "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null
     
     # Nikto scan
     log_verbose "Running nikto..."
     cat "$OUTPUT_DIR/live.txt" 2>/dev/null | \
-        nikto -h - -Format json -useragent "$USER_AGENT" -o "$OUTPUT_DIR/nikto.json" 2>/dev/null &
-    show_progress $! "Running nikto web scanner..."
-    wait $!
+        nikto -h - -Format json -useragent "$USER_AGENT" -o "$OUTPUT_DIR/nikto.json" 2>/dev/null
     
     local vuln_count=$(wc -l < "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || echo 0)
     log_success "Web scan complete, found $vuln_count potential vulnerabilities → $OUTPUT_DIR/http-vulns.txt"
