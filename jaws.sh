@@ -253,22 +253,27 @@ run_subdomain_enum() {
     # Amass
     log_verbose "Running amass..."
     amass enum -d "$TARGET" -o "$OUTPUT_DIR/amass.txt" 2>/dev/null
+    touch "$OUTPUT_DIR/amass.txt" 2>/dev/null
     
     # Subfinder
     log_verbose "Running subfinder..."
     subfinder -d "$TARGET" -o "$OUTPUT_DIR/subfinder.txt" -silent
+    touch "$OUTPUT_DIR/subfinder.txt" 2>/dev/null
     
     # Sublist3r
     log_verbose "Running sublist3r..."
     sublist3r -d "$TARGET" -o "$OUTPUT_DIR/sublist3r.txt" 2>/dev/null
+    touch "$OUTPUT_DIR/sublist3r.txt" 2>/dev/null
     
     # Merge and filter live subdomains
     log_info "Filtering live subdomains..."
     cat "$OUTPUT_DIR"/{amass,subfinder,sublist3r}.txt 2>/dev/null | \
         sort -u | \
-        httpx -silent -user-agent "$USER_AGENT" -o "$OUTPUT_DIR/live.txt"
+        httpx -silent -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/live.txt"
     
-    local count=$(wc -l < "$OUTPUT_DIR/live.txt" 2>/dev/null || echo 0)
+    # Ensure file exists for counting
+    touch "$OUTPUT_DIR/live.txt" 2>/dev/null
+    local count=$(wc -l <"$OUTPUT_DIR/live.txt" 2>/dev/null || echo 0)
     log_success "Found $count live subdomains → $OUTPUT_DIR/live.txt"
 }
 
@@ -288,11 +293,20 @@ run_port_scan() {
         awk '{print $2 ":" $3}' | \
         naabu -verify -silent -o "$OUTPUT_DIR/naabu.txt"
     
-    # Run nuclei on discovered services
-    log_info "Scanning for network vulnerabilities..."
-    nuclei -l "$OUTPUT_DIR/naabu.txt" -t network/ -t cves/ -silent -o "$OUTPUT_DIR/naabu-vulns.txt" 2>/dev/null
+    # Ensure file exists
+    touch "$OUTPUT_DIR/naabu.txt" 2>/dev/null
     
-    local vuln_count=$(wc -l < "$OUTPUT_DIR/naabu-vulns.txt" 2>/dev/null || echo 0)
+    # Run nuclei on discovered services only if we have targets
+    if [[ -s "$OUTPUT_DIR/naabu.txt" ]]; then
+        log_info "Scanning for network vulnerabilities..."
+        nuclei -l "$OUTPUT_DIR/naabu.txt" -t network/ -t cves/ -silent -o "$OUTPUT_DIR/naabu-vulns.txt" 2>/dev/null
+        touch "$OUTPUT_DIR/naabu-vulns.txt" 2>/dev/null
+    else
+        log_warning "No ports found for vulnerability scanning"
+        touch "$OUTPUT_DIR/naabu-vulns.txt" 2>/dev/null
+    fi
+    
+    local vuln_count=$(wc -l <"$OUTPUT_DIR/naabu-vulns.txt" 2>/dev/null || echo 0)
     log_success "Port scan complete, found $vuln_count potential vulnerabilities → $OUTPUT_DIR/naabu-vulns.txt"
 }
 
@@ -321,9 +335,11 @@ run_url_discovery() {
     cat "$OUTPUT_DIR/gau.txt" "$OUTPUT_DIR/katana.txt" 2>/dev/null | \
         sort -u | \
         grep -E "^https?://" | \
-        httpx -mc 200-399 -silent -user-agent "$USER_AGENT" -o "$OUTPUT_DIR/all_live_urls.txt"
+        httpx -mc 200-399 -silent -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/all_live_urls.txt"
     
-    local url_count=$(wc -l < "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null || echo 0)
+    # Ensure file exists for counting
+    touch "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null
+    local url_count=$(wc -l <"$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null || echo 0)
     log_success "Discovered $url_count live URLs → $OUTPUT_DIR/all_live_urls.txt"
 }
 
