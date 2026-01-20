@@ -185,30 +185,6 @@ install_sublist3r() {
 }
 
 ################################################################################
-# Install RustScan
-################################################################################
-install_rustscan() {
-    echo -e "${YELLOW}[*] Installing RustScan...${NC}"
-    
-    if command -v rustscan &> /dev/null; then
-        echo -e "${GREEN}[+] RustScan already installed${NC}"
-        return
-    fi
-    
-    # Install Rust if not present
-    if ! command -v cargo &> /dev/null; then
-        echo -e "${BLUE}  → Installing Rust...${NC}"
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-        source "$HOME/.cargo/env"
-    fi
-    
-    # Install RustScan via cargo
-    cargo install rustscan
-    
-    echo -e "${GREEN}[+] RustScan installed${NC}"
-}
-
-################################################################################
 # Install Nmap
 ################################################################################
 install_nmap() {
@@ -279,7 +255,7 @@ verify_tools() {
     echo -e "${CYAN}================================${NC}"
     echo ""
     
-    local tools=("amass" "subfinder" "sublist3r" "rustscan" "naabu" "gau" "katana" "httpx" "nuclei" "nikto" "gobuster" "nmap")
+    local tools=("amass" "subfinder" "sublist3r" "naabu" "gau" "katana" "httpx" "nuclei" "nikto" "gobuster" "nmap")
     local missing=()
     
     for tool in "${tools[@]}"; do
@@ -324,9 +300,6 @@ main() {
     echo ""
     
     install_sublist3r
-    echo ""
-    
-    install_rustscan
     echo ""
     
     install_nmap
