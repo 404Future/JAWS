@@ -10,7 +10,7 @@ A powerful, modular web reconnaissance and vulnerability scanner written in pure
 
 - **Comprehensive Reconnaissance Pipeline**
   - Subdomain enumeration (amass, subfinder, sublist3r)
-  - Port scanning (rustscan, naabu, nmap)
+  - Port scanning (naabu, nmap)
   - URL discovery (gau, katana)
   - Web vulnerability scanning (nuclei, nikto)
   - Targeted directory bruteforcing (gobuster)
@@ -62,7 +62,6 @@ If you prefer to install tools manually, JAWS requires:
 - [sublist3r](https://github.com/aboul3la/Sublist3r)
 
 **Port Scanning:**
-- [rustscan](https://github.com/RustScan/RustScan)
 - [naabu](https://github.com/projectdiscovery/naabu)
 - [nmap](https://nmap.org/)
 
@@ -145,7 +144,7 @@ If you prefer to install tools manually, JAWS requires:
 | Module | Tools Used | Description |
 |--------|-----------|-------------|
 | `subdomain` | amass, subfinder, sublist3r, httpx | Enumerate and verify live subdomains |
-| `portscan` | rustscan, naabu, nuclei | Discover open ports and scan for network vulnerabilities |
+| `portscan` | naabu, nuclei | Discover open ports and scan for network vulnerabilities |
 | `urls` | gau, katana, httpx | Discover and verify live URLs |
 | `webvuln` | nuclei, nikto | Scan for web vulnerabilities and misconfigurations |
 | `dirbust` | gobuster | Prepare targeted directory bruteforcing |
@@ -161,7 +160,7 @@ After a scan, you'll find these key files in your output directory:
 | `naabu-vulns.txt` | Network/service vulnerabilities |
 | `http-vulns.txt` | Web application vulnerabilities |
 | `nikto.json` | Nikto scan results |
-| `rustscan.gnmap` | Port scan results (for deeper nmap analysis) |
+| `naabu.txt` | Port scan results (for deeper nmap analysis) |
 | `gobuster_paths.txt` | Interesting paths for manual bruteforcing |
 
 ## 💡 Examples
@@ -191,7 +190,7 @@ After a scan, you'll find these key files in your output directory:
 ### Deep Nmap Scan
 After the initial scan, you can run a deeper nmap scan:
 ```bash
-nmap -iL output/example.com/rustscan.gnmap -sV -sC -oN output/example.com/nmap-deep.txt
+nmap -iL output/example.com/naabu.txt -sV -sC -oN output/example.com/nmap-deep.txt
 ```
 
 ### Directory Bruteforcing
