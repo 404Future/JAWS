@@ -338,7 +338,7 @@ run_url_discovery() {
     (cat "$OUTPUT_DIR"/{gau,katana}.txt 2>/dev/null | \
         sort -u | \
         grep -E "^https?://" | \
-        httpx -mc 200-399 -silent -threads "$THREADS" ${RATE_LIMIT:+ -rate-limit "$RATE_LIMIT"} \
+        httpx -mc 200,301,302,403 -silent -threads "$THREADS" ${RATE_LIMIT:+ -rate-limit "$RATE_LIMIT"} \
         -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/all_live_urls.txt") 2>/dev/null || touch "$OUTPUT_DIR/all_live_urls.txt"
     
     # Count results
