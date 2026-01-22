@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ################################################################################
-# JAWS (Just Another Web Scanner) V3.0 - GAU-FREE VERSION
+# JAWS (Just Another Web Scanner) V3.0
 # A comprehensive web reconnaissance and vulnerability scanner
 ################################################################################
 
@@ -33,7 +33,7 @@ show_banner() {
                                      \|_________|
 EOF
     echo -e "${NC}"
-    echo -e "${MAGENTA}JAWS - Just Another Web Scanner v${VERSION} (GAU-FREE)${NC}"
+    echo -e "${MAGENTA}JAWS - Just Another Web Scanner v${VERSION}${NC}"
     echo -e "${BLUE}Comprehensive Reconnaissance & Vulnerability Scanner${NC}"
     echo ""
 }
@@ -315,7 +315,7 @@ run_port_scan() {
 }
 
 ################################################################################
-# Module: URL Discovery (GAU-FREE, NO HTTPX VERIFICATION)
+# Module: URL Discovery
 ################################################################################
 run_url_discovery() {
     log_info "Starting URL discovery (katana + waybackurls)..."
