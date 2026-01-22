@@ -320,21 +320,52 @@ run_url_discovery() {
         return
     fi
     
+    local total_subdomains=$(wc -l < "$OUTPUT_DIR/live.txt")
+    local current=0
+    
     # Passive collection with gau
     log_verbose "Running gau (passive)..."
-    cat "$OUTPUT_DIR/live.txt" | gau --subs > "$OUTPUT_DIR/gau.txt" 2>/dev/null
+    {
+        while IFS= read -r subdomain; do
+            current=$((current + 1))
+            printf "\r${CYAN}[*]${NC} Collecting URLs with gau... [%d/%d subdomains]" "$current" "$total_subdomains"
+            echo "$subdomain"
+        done < "$OUTPUT_DIR/live.txt" | gau --subs > "$OUTPUT_DIR/gau.txt" 2>/dev/null
+        printf "\r\033[K"  # Clear the line
+    }
     
     # Active crawling with katana
+    current=0
     log_verbose "Running katana (active)..."
-    cat "$OUTPUT_DIR/live.txt" | \
-        katana -silent -jc -ef js,css -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/katana.txt" 2>/dev/null
+    {
+        while IFS= read -r subdomain; do
+            current=$((current + 1))
+            printf "\r${CYAN}[*]${NC} Crawling with katana... [%d/%d subdomains]" "$current" "$total_subdomains"
+            echo "$subdomain"
+        done < "$OUTPUT_DIR/live.txt" | \
+            katana -silent -jc -ef js,css -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/katana.txt" 2>/dev/null
+        printf "\r\033[K"  # Clear the line
+    }
     
     # Merge and filter live URLs
     log_info "Filtering live URLs..."
-    cat "$OUTPUT_DIR/gau.txt" "$OUTPUT_DIR/katana.txt" 2>/dev/null | \
-        sort -u | \
-        grep -E "^https?://" | \
-        httpx -mc 200-399 -silent -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/all_live_urls.txt"
+    local total_urls=$(cat "$OUTPUT_DIR/gau.txt" "$OUTPUT_DIR/katana.txt" 2>/dev/null | sort -u | grep -E "^https?://" | wc -l)
+    current=0
+    
+    {
+        cat "$OUTPUT_DIR/gau.txt" "$OUTPUT_DIR/katana.txt" 2>/dev/null | \
+            sort -u | \
+            grep -E "^https?://" | \
+            while IFS= read -r url; do
+                current=$((current + 1))
+                if (( current % 10 == 0 )); then
+                    printf "\r${CYAN}[*]${NC} Verifying URLs with httpx... [%d/%d URLs]" "$current" "$total_urls"
+                fi
+                echo "$url"
+            done | \
+            httpx -mc 200-399 -silent -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/all_live_urls.txt"
+        printf "\r\033[K"  # Clear the line
+    }
     
     # Ensure file exists for counting
     touch "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null
@@ -365,10 +396,21 @@ run_web_vuln_scan() {
         -H "User-Agent: $USER_AGENT" \
         -o "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null
     
-    # Nikto scan
+    # Nikto scan on live subdomains
     log_verbose "Running nikto..."
-    cat "$OUTPUT_DIR/live.txt" 2>/dev/null | \
-        nikto -h - -Format json -useragent "$USER_AGENT" -o "$OUTPUT_DIR/nikto.json" 2>/dev/null
+    if [[ -f "$OUTPUT_DIR/live.txt" ]]; then
+        # Create temporary file for nikto results
+        > "$OUTPUT_DIR/nikto_results.tmp"
+        
+        while IFS= read -r host; do
+            # Run nikto on each host and append to temp file
+            nikto -h "$host" -Format txt -useragent "$USER_AGENT" 2>/dev/null >> "$OUTPUT_DIR/nikto_results.tmp"
+        done < "$OUTPUT_DIR/live.txt"
+        
+        # Move results to final location
+        mv "$OUTPUT_DIR/nikto_results.tmp" "$OUTPUT_DIR/nikto.txt" 2>/dev/null
+        touch "$OUTPUT_DIR/nikto.txt" 2>/dev/null
+    fi
     
     local vuln_count=$(wc -l < "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || echo 0)
     log_success "Web scan complete, found $vuln_count potential vulnerabilities → $OUTPUT_DIR/http-vulns.txt"
