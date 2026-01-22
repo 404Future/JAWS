@@ -320,77 +320,101 @@ run_port_scan() {
 run_url_discovery() {
     log_info "Starting URL discovery (katana + waybackurls)..."
     
-    # FAILSAFE: Skip if no live targets
-    [[ ! -s "$OUTPUT_DIR/live.txt" ]] && { log_warning "No live subdomains"; return; }
+    [[ ! -s "$OUTPUT_DIR/live.txt" ]] && { 
+        log_warning "No live subdomains found"; return 
+    }
     
-    # KATANA: Top 50 domains, 60s timeout max
-    log_verbose "Katana (top 50 domains, 60s max)..."
+    # Katana - active crawling (conservative)
+    log_verbose "Running katana (top 50 domains, 60s max)..."
     cat "$OUTPUT_DIR/live.txt" | head -50 | \
         timeout 60 katana -silent -jc -ef js,css -c 3 -rl 2 -depth 2 \
         -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/katana.txt" || 
-        { log_warning "Katana timed out (normal for enterprise targets)"; touch "$OUTPUT_DIR/katana.txt"; }
+        touch "$OUTPUT_DIR/katana.txt"
     
-    # WAYBACKURLS: Top 100 domains, fast passive recon
+    # Waybackurls - passive archive
     if command -v waybackurls >/dev/null 2>&1; then
-        log_verbose "Waybackurls (top 100 domains)..."
+        log_verbose "Running waybackurls (top 100 domains)..."
         cat "$OUTPUT_DIR/live.txt" | head -100 | \
             timeout 45 waybackurls > "$OUTPUT_DIR/wayback.txt" || 
             touch "$OUTPUT_DIR/wayback.txt"
     fi
     
-    # Merge + dedupe
+    # Merge ALL URLs
     log_info "Merging URLs..."
     {
         cat "$OUTPUT_DIR"/{katana,wayback}.txt 2>/dev/null;
         cat "$OUTPUT_DIR/live.txt" | sed 's#^#https://#';
     } | sort -u | grep -E "^https?://" > "$OUTPUT_DIR/all_live_urls.txt"
     
-    local count=$(wc -l < "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null || echo 0)
-    log_success "Discovered $count URLs → $OUTPUT_DIR/all_live_urls.txt"
+    # INTELLIGENT PRIORITIZATION
+    log_info "🔍 Prioritizing critical endpoints..."
+    
+    # CRITICAL: High-value paths
+    grep -Ei "(admin|api|login|auth|dashboard|panel|portal|
+               dev|stage|qa|beta|test|staging|uat|
+               debug|config|backup|private|internal|
+               console|mgmt|management|control|
+               gateway|proxy|redirect)" \
+         "$OUTPUT_DIR/all_live_urls.txt" > "$OUTPUT_DIR/critical_urls.txt" || 
+         touch "$OUTPUT_DIR/critical_urls.txt"
+    
+    # Remove noise files
+    grep -v -E "(manifest\.json|site\.webmanifest|
+                 i18n.*\.json|olkerror\.html|favicon|
+                 robots\.txt|sitemap\.xml|ds\.store)" \
+         "$OUTPUT_DIR/critical_urls.txt" > "$OUTPUT_DIR/vuln_targets.txt" || 
+         touch "$OUTPUT_DIR/vuln_targets.txt"
+    
+    local total=$(wc -l < "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null || echo 0)
+    local critical=$(wc -l < "$OUTPUT_DIR/vuln_targets.txt" 2>/dev/null || echo 0)
+    log_success "URLs: $total total → $critical CRITICAL prioritized → vuln_targets.txt"
 }
 
 ################################################################################
 # Module: Web Vulnerability Scanning
 ################################################################################
 run_web_vuln_scan() {
-    log_info "Starting web vulnerability scanning..."
+    log_info "Intelligent web vulnerability scanning..."
     
-    # Ensure we have targets
-    if [[ ! -f "$OUTPUT_DIR/all_live_urls.txt" || ! -s "$OUTPUT_DIR/all_live_urls.txt" ]]; then
-        log_warning "No URLs found, converting live subdomains to URLs"
-        if [[ -f "$OUTPUT_DIR/live.txt" && -s "$OUTPUT_DIR/live.txt" ]]; then
-            # Convert domains to HTTPS URLs for nuclei
-            cat "$OUTPUT_DIR/live.txt" | \
-                sed 's#^#https://#' | \
-                httpx -silent -mc 200-399,403 > "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null || \
-                cp "$OUTPUT_DIR/live.txt" "$OUTPUT_DIR/all_live_urls.txt"
-        else
-            log_error "No targets for web scanning"
-            return
-        fi
+    # PRIORITY 1: CRITICAL URLS (50 max)
+    if [[ -s "$OUTPUT_DIR/vuln_targets.txt" ]]; then
+        log_info "Nuclei: $(wc -l < "$OUTPUT_DIR/vuln_targets.txt") CRITICAL URLs..."
+        timeout 120 nuclei -l "$OUTPUT_DIR/vuln_targets.txt" \
+            -tags http,cve,misconfig,default-login,auth-bypass,xss,lfi,rfi,ssrf,api \
+            -severity critical,high,medium -c 20 \
+            -H "User-Agent: $USER_AGENT" \
+            -o "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || {
+                log_warning "Nuclei partial results saved"
+            }
     fi
     
-    # Nuclei scan on live URLs
-    log_verbose "Running nuclei on web vulnerabilities..."
-    nuclei -l "$OUTPUT_DIR/all_live_urls.txt" \
-        -tags http,cve,misconfig,xss,lfi,rfi,ssrf \
-        -silent -c "$THREADS" ${RATE_LIMIT:+ -rate-limit "$RATE_LIMIT"} \
-        -H "User-Agent: $USER_AGENT" \
-        -o "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || touch "$OUTPUT_DIR/http-vulns.txt"
-    
-    # Nikto on live subdomains (domains work fine here)
-    log_verbose "Running nikto on live subdomains..."
+    # PRIORITY 2: Top live subdomains (25 max)
+    log_info "Nikto: Top 25 live subdomains (FIXED SYNTAX)..."
     if [[ -f "$OUTPUT_DIR/live.txt" ]]; then
-        > "$OUTPUT_DIR/nikto.txt"
-        while IFS= read -r host; do
-            nikto -h "https://$host" -Format txt -useragent "$USER_AGENT" \
-                ${RATE_LIMIT:+ -Tuning x} >> "$OUTPUT_DIR/nikto.txt" 2>/dev/null
-        done < "$OUTPUT_DIR/live.txt"
-        touch "$OUTPUT_DIR/nikto.txt" 2>/dev/null
+        {
+            echo "=== $(date) JAWS Nikto Scan ===" 
+            head -25 "$OUTPUT_DIR/live.txt" | \
+            xargs -I {} -P 5 timeout 25 sh -c '
+                echo "--- $(date) https://{} ---" &&
+                nikto -h "https://{}" -Format txt -user-agent "'"$USER_AGENT"'" \
+                    -Tuning x2 2>/dev/null || echo "Nikto: {} - failed/timeout"
+            '
+        } >> "$OUTPUT_DIR/nikto.txt" 2>/dev/null || touch "$OUTPUT_DIR/nikto.txt"
     fi
     
-    local vuln_count=$(wc -l < "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || echo 0)
-    log_success "Web scan complete, found $vuln_count potential vulnerabilities → $OUTPUT_DIR/http-vulns.txt"
+    # PRIORITY 3: Fallback to top ALL URLs if no critical found
+    if [[ ! -s "$OUTPUT_DIR/http-vulns.txt" && -s "$OUTPUT_DIR/all_live_urls.txt" ]]; then
+        log_info "Fallback: Top 100 ALL URLs..."
+        head -100 "$OUTPUT_DIR/all_live_urls.txt" | \
+        timeout 90 nuclei -l - -tags misconfig,http \
+            -c 10 -H "User-Agent: $USER_AGENT" \
+            -o "$OUTPUT_DIR/http-vulns.txt"
+    fi
+    
+    # Results summary
+    local nuclei=$(wc -l < "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || echo 0)
+    local nikto=$(grep -c "https://" "$OUTPUT_DIR/nikto.txt" 2>/dev/null || echo 0)
+    log_success "🛡️ Web scan COMPLETE | Nuclei: $nuclei | Nikto: $nikto results"
 }
 
 ################################################################################
