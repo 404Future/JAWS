@@ -320,27 +320,28 @@ run_url_discovery() {
         return
     fi
     
-    # Passive collection with gau (FIXED: removed invalid --subs flag)
+    # Passive collection with gau
     log_verbose "Running gau (passive)..."
     cat "$OUTPUT_DIR/live.txt" | \
-        gau -t "$THREADS" ${RATE_LIMIT:+ -rl "$RATE_LIMIT"} -H "User-Agent: $USER_AGENT" > "$OUTPUT_DIR/gau.txt" 2>/dev/null || touch "$OUTPUT_DIR/gau.txt"
+        gau -threads "$THREADS" ${RATE_LIMIT:+ -rate-limit "$RATE_LIMIT"} \
+        -H "User-Agent: $USER_AGENT" > "$OUTPUT_DIR/gau.txt" 2>/dev/null || touch "$OUTPUT_DIR/gau.txt"
     
     # Active crawling with katana
     log_verbose "Running katana (active)..."
     cat "$OUTPUT_DIR/live.txt" | \
-        katana -silent -jc -ef js,css -c "$THREADS" ${RATE_LIMIT:+ -rl "$RATE_LIMIT"} \
+        katana -silent -jc -ef js,css \
+        -c "$THREADS" ${RATE_LIMIT:+ -rl "$RATE_LIMIT"} \
         -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/katana.txt" 2>/dev/null || touch "$OUTPUT_DIR/katana.txt"
     
-    # Merge and filter live URLs (SIMPLIFIED - no buggy progress counters)
+    # Merge, filter, and verify live URLs
     log_info "Filtering live URLs..."
     (cat "$OUTPUT_DIR"/{gau,katana}.txt 2>/dev/null | \
         sort -u | \
         grep -E "^https?://" | \
-        httpx -mc 200-399 -silent -c "$THREADS" ${RATE_LIMIT:+ -rl "$RATE_LIMIT"} \
+        httpx -mc 200-399 -silent -threads "$THREADS" ${RATE_LIMIT:+ -rate-limit "$RATE_LIMIT"} \
         -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/all_live_urls.txt") 2>/dev/null || touch "$OUTPUT_DIR/all_live_urls.txt"
     
-    # Ensure file exists and count
-    touch "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null
+    # Count results
     local url_count=$(wc -l <"$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null || echo 0)
     log_success "Discovered $url_count live URLs → $OUTPUT_DIR/all_live_urls.txt"
 }
@@ -351,36 +352,37 @@ run_url_discovery() {
 run_web_vuln_scan() {
     log_info "Starting web vulnerability scanning..."
     
-    if [[ ! -f "$OUTPUT_DIR/all_live_urls.txt" ]]; then
-        log_warning "No URLs found, using live subdomains instead"
-        if [[ ! -f "$OUTPUT_DIR/live.txt" ]]; then
+    # Ensure we have targets
+    if [[ ! -f "$OUTPUT_DIR/all_live_urls.txt" || ! -s "$OUTPUT_DIR/all_live_urls.txt" ]]; then
+        log_warning "No URLs found, converting live subdomains to URLs"
+        if [[ -f "$OUTPUT_DIR/live.txt" && -s "$OUTPUT_DIR/live.txt" ]]; then
+            # Convert domains to HTTPS URLs for nuclei
+            cat "$OUTPUT_DIR/live.txt" | \
+                sed 's#^#https://#' | \
+                httpx -silent -mc 200-399,403 > "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null || \
+                cp "$OUTPUT_DIR/live.txt" "$OUTPUT_DIR/all_live_urls.txt"
+        else
             log_error "No targets for web scanning"
             return
         fi
-        cp "$OUTPUT_DIR/live.txt" "$OUTPUT_DIR/all_live_urls.txt"
     fi
     
-    # Nuclei scan
-    log_verbose "Running nuclei..."
+    # Nuclei scan on live URLs
+    log_verbose "Running nuclei on web vulnerabilities..."
     nuclei -l "$OUTPUT_DIR/all_live_urls.txt" \
-        -t cves/ -t misconfig/ \
-        -silent \
+        -tags http,cve,misconfig,xss,lfi,rfi,ssrf \
+        -silent -c "$THREADS" ${RATE_LIMIT:+ -rate-limit "$RATE_LIMIT"} \
         -H "User-Agent: $USER_AGENT" \
-        -o "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null
+        -o "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || touch "$OUTPUT_DIR/http-vulns.txt"
     
-    # Nikto scan on live subdomains
-    log_verbose "Running nikto..."
+    # Nikto on live subdomains (domains work fine here)
+    log_verbose "Running nikto on live subdomains..."
     if [[ -f "$OUTPUT_DIR/live.txt" ]]; then
-        # Create temporary file for nikto results
-        > "$OUTPUT_DIR/nikto_results.tmp"
-        
+        > "$OUTPUT_DIR/nikto.txt"
         while IFS= read -r host; do
-            # Run nikto on each host and append to temp file
-            nikto -h "$host" -Format txt -useragent "$USER_AGENT" 2>/dev/null >> "$OUTPUT_DIR/nikto_results.tmp"
+            nikto -h "https://$host" -Format txt -useragent "$USER_AGENT" \
+                ${RATE_LIMIT:+ -Tuning x} >> "$OUTPUT_DIR/nikto.txt" 2>/dev/null
         done < "$OUTPUT_DIR/live.txt"
-        
-        # Move results to final location
-        mv "$OUTPUT_DIR/nikto_results.tmp" "$OUTPUT_DIR/nikto.txt" 2>/dev/null
         touch "$OUTPUT_DIR/nikto.txt" 2>/dev/null
     fi
     
@@ -394,25 +396,40 @@ run_web_vuln_scan() {
 run_directory_brute() {
     log_info "Preparing targeted directory bruteforcing..."
     
-    if [[ ! -f "$OUTPUT_DIR/all_live_urls.txt" ]]; then
-        log_warning "No URLs found for directory bruteforcing"
-        return
+    # Ensure we have URLs, fallback to live subdomains if needed
+    if [[ ! -f "$OUTPUT_DIR/all_live_urls.txt" || ! -s "$OUTPUT_DIR/all_live_urls.txt" ]]; then
+        log_warning "No URLs found, converting live subdomains for directory bruteforcing"
+        if [[ -f "$OUTPUT_DIR/live.txt" && -s "$OUTPUT_DIR/live.txt" ]]; then
+            # Convert domains to HTTPS URLs
+            cat "$OUTPUT_DIR/live.txt" | \
+                sed 's#^#https://#' > "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null
+            log_verbose "Created $OUTPUT_DIR/all_live_urls.txt from live subdomains"
+        else
+            log_warning "No targets available for directory bruteforcing"
+            return
+        fi
     fi
     
-    # Extract interesting paths (API, admin, dev, test, debug)
-    grep -E "(api|admin|dev|test|debug)" "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null | \
+    # Extract interesting paths (API, admin, dev, test, debug, etc.)
+    grep -Ei "(api|admin|dev|test|debug|config|backup|private|wp-admin|phpmyadmin)" "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null | \
         sed 's#https\?://[^/]*##g' | \
         cut -d'?' -f1 | \
-        sort -u > "$OUTPUT_DIR/gobuster_paths.txt"
+        cut -d'#' -f1 | \
+        sort -u | \
+        grep -v '^/$' > "$OUTPUT_DIR/gobuster_paths.txt"
     
     local path_count=$(wc -l < "$OUTPUT_DIR/gobuster_paths.txt" 2>/dev/null || echo 0)
     
     if [[ $path_count -gt 0 ]]; then
         log_success "Found $path_count interesting paths for targeted bruteforcing"
-        log_info "Manual gobuster command:"
-        echo -e "${CYAN}while read sub; do while read path; do gobuster dir -u \$sub\$path -w /path/to/wordlist.txt -a \"$USER_AGENT\"; done < $OUTPUT_DIR/gobuster_paths.txt; done < $OUTPUT_DIR/live.txt${NC}"
+        log_info "Ready for gobuster - use this optimized command:"
+        echo -e "${CYAN}cat $OUTPUT_DIR/live.txt | sed 's#^#https://#' | \\
+xargs -I {} -P $THREADS gobuster dir -u {} -w /path/to/wordlist.txt \\
+    -a \"$USER_AGENT\" ${RATE_LIMIT:+ -r -t $THREADS} --no-tls-validation${NC}"
+        echo -e "${YELLOW}Paths saved: $OUTPUT_DIR/gobuster_paths.txt${NC}"
     else
         log_warning "No interesting paths found for bruteforcing"
+        log_info "This is normal for highly-secured targets like coca-cola.com"
     fi
 }
 
