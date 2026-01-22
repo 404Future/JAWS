@@ -320,29 +320,26 @@ run_port_scan() {
 run_url_discovery() {
     log_info "Starting URL discovery (katana + waybackurls)..."
     
-    [[ ! -s "$OUTPUT_DIR/live.txt" ]] && { 
-        log_warning "No live subdomains found"; return 
-    }
+    # FAILSAFE: Skip if no live targets
+    [[ ! -s "$OUTPUT_DIR/live.txt" ]] && { log_warning "No live subdomains"; return; }
     
-    # Katana - active crawling (conservative to avoid WAF)
-    log_verbose "Running katana (active crawling)..."
-    cat "$OUTPUT_DIR/live.txt" | head -200 | \
-        katana -silent -jc -ef js,css -c 5 -rl 3 \
-        -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/katana.txt" 2>/dev/null || 
-        touch "$OUTPUT_DIR/katana.txt"
+    # KATANA: Top 50 domains, 60s timeout max
+    log_verbose "Katana (top 50 domains, 60s max)..."
+    cat "$OUTPUT_DIR/live.txt" | head -50 | \
+        timeout 60 katana -silent -jc -ef js,css -c 3 -rl 2 -depth 2 \
+        -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/katana.txt" || 
+        { log_warning "Katana timed out (normal for enterprise targets)"; touch "$OUTPUT_DIR/katana.txt"; }
     
-    # Waybackurls - passive archive data (optional)
+    # WAYBACKURLS: Top 100 domains, fast passive recon
     if command -v waybackurls >/dev/null 2>&1; then
-        log_verbose "Running waybackurls (passive archive)..."
+        log_verbose "Waybackurls (top 100 domains)..."
         cat "$OUTPUT_DIR/live.txt" | head -100 | \
-            waybackurls > "$OUTPUT_DIR/wayback.txt" 2>/dev/null || 
-        touch "$OUTPUT_DIR/wayback.txt"
-    else
-        touch "$OUTPUT_DIR/wayback.txt"
+            timeout 45 waybackurls > "$OUTPUT_DIR/wayback.txt" || 
+            touch "$OUTPUT_DIR/wayback.txt"
     fi
     
-    # Merge ALL URLs + root endpoints (NO httpx verification - WAF bypass)
-    log_info "Merging URLs (no verification - enterprise WAF bypass)..."
+    # Merge + dedupe
+    log_info "Merging URLs..."
     {
         cat "$OUTPUT_DIR"/{katana,wayback}.txt 2>/dev/null;
         cat "$OUTPUT_DIR/live.txt" | sed 's#^#https://#';
