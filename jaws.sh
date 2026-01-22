@@ -370,23 +370,36 @@ run_url_discovery() {
 run_web_vuln_scan() {
     log_info "Intelligent web vulnerability scanning..."
     
-    # PRIORITY 1: CRITICAL URLS (limit to 50)
-    if [[ -s "$OUTPUT_DIR/vuln_targets.txt" ]]; then
-        critical_count=$(wc -l < "$OUTPUT_DIR/vuln_targets.txt" 2>/dev/null || echo 0)
-        log_info "Nuclei: $critical_count CRITICAL URLs..."
-        head -50 "$OUTPUT_DIR/vuln_targets.txt" > "$OUTPUT_DIR/scan_critical.txt"
-        timeout 120 nuclei -l "$OUTPUT_DIR/scan_critical.txt" \
-            -tags http,cve,misconfig,default-login,auth-bypass,xss,lfi,rfi,ssrf,api \
-            -severity critical,high,medium -c 20 \
-            -H "User-Agent: $USER_AGENT" \
-            -o "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || {
-                log_warning "Nuclei partial results saved"
-            }
-        rm -f "$OUTPUT_DIR/scan_critical.txt"
+    # Verify critical targets exist
+    if [[ ! -s "$OUTPUT_DIR/vuln_targets.txt" ]]; then
+        log_warning "No critical URLs found, scanning top 100 all URLs"
+        head -100 "$OUTPUT_DIR/all_live_urls.txt" > "$OUTPUT_DIR/vuln_targets.txt"
     fi
     
-    # PRIORITY 2: Top live subdomains (25 max) - FIXED SYNTAX
-    log_info "Nikto: Top 25 live subdomains..."
+    critical_count=$(wc -l < "$OUTPUT_DIR/vuln_targets.txt" 2>/dev/null || echo 0)
+    log_info "Nuclei scanning $critical_count targets (broad coverage)..."
+    
+    # PHASE 1: Broad misconfig + info scan (most likely to hit)
+    head -50 "$OUTPUT_DIR/vuln_targets.txt" > "$OUTPUT_DIR/phase1.txt"
+    timeout 120 nuclei -l "$OUTPUT_DIR/phase1.txt" \
+        -tags misconfig,http,info,default-login \
+        -severity low,medium,info -c 25 \
+        -H "User-Agent: $USER_AGENT" \
+        -o "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null
+    
+    # PHASE 2: CVE + exploit scan (if phase 1 succeeds)
+    if [[ -s "$OUTPUT_DIR/http-vulns.txt" ]]; then
+        log_info "Phase 1 found results, running CVE scan..."
+        tail -50 "$OUTPUT_DIR/vuln_targets.txt" > "$OUTPUT_DIR/phase2.txt"
+        timeout 120 nuclei -l "$OUTPUT_DIR/phase2.txt" \
+            -tags cve,xss,lfi,rfi,ssrf,api \
+            -severity critical,high -c 20 \
+            -H "User-Agent: $USER_AGENT" \
+            -o "$OUTPUT_DIR/http-cves.txt" 2>/dev/null
+    fi
+    
+    # Nikto scan (top 25 subdomains)
+    log_info "Nikto scanning top 25 subdomains..."
     if [[ -f "$OUTPUT_DIR/live.txt" ]]; then
         {
             echo "=== $(date) JAWS Nikto Scan ===" 
@@ -399,21 +412,14 @@ run_web_vuln_scan() {
         } > "$OUTPUT_DIR/nikto.txt" 2>/dev/null || touch "$OUTPUT_DIR/nikto.txt"
     fi
     
-    # PRIORITY 3: Fallback to top ALL URLs if no critical results - FIXED PIPE
-    if [[ ! -s "$OUTPUT_DIR/http-vulns.txt" && -s "$OUTPUT_DIR/all_live_urls.txt" ]]; then
-        log_info "Fallback: Top 100 ALL URLs..."
-        head -100 "$OUTPUT_DIR/all_live_urls.txt" > "$OUTPUT_DIR/top100_urls.txt"
-        timeout 90 nuclei -l "$OUTPUT_DIR/top100_urls.txt" \
-            -tags misconfig,http -c 10 \
-            -H "User-Agent: $USER_AGENT" \
-            -o "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || touch "$OUTPUT_DIR/http-vulns.txt"
-        rm -f "$OUTPUT_DIR/top100_urls.txt"
-    fi
-    
     # Results summary
-    local nuclei=$(wc -l < "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || echo 0)
+    local nuclei1=$(wc -l < "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || echo 0)
+    local nuclei2=$(wc -l < "$OUTPUT_DIR/http-cves.txt" 2>/dev/null || echo 0)
     local nikto_size=$(stat -c%s "$OUTPUT_DIR/nikto.txt" 2>/dev/null || echo 0)
-    log_success "Web scan COMPLETE | Nuclei: $nuclei | Nikto: $(($nikto_size/1024))KB"
+    log_success "Scan COMPLETE | Phase1: $nuclei1 | Phase2: $nuclei2 | Nikto: $(($nikto_size/1024))KB"
+    
+    # Cleanup
+    rm -f "$OUTPUT_DIR"/phase{1,2}.txt
 }
 
 ################################################################################
