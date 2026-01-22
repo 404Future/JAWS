@@ -1,8 +1,8 @@
 #!/bin/bash
 
 ################################################################################
-# JAWS V3.0 - Tool Installation Script
-# Installs all required dependencies for JAWS scanner
+# JAWS V3.0 - Tool Installation Script  
+# Installs all required dependencies for JAWS scanner (Updated: Gau removed, waybackurls added)
 ################################################################################
 
 set -e  # Exit on error
@@ -63,7 +63,7 @@ install_go() {
     
     echo -e "${YELLOW}[*] Installing Go...${NC}"
     
-    GO_VERSION="1.21.5"
+    GO_VERSION="1.23.6"
     wget -q "https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz" -O /tmp/go.tar.gz
     sudo rm -rf /usr/local/go
     sudo tar -C /usr/local -xzf /tmp/go.tar.gz
@@ -77,7 +77,7 @@ install_go() {
     
     export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin
     
-    echo -e "${GREEN}[+] Go installed successfully${NC}"
+    echo -e "${GREEN}[+] Go $(go version) installed successfully${NC}"
 }
 
 ################################################################################
@@ -89,17 +89,17 @@ install_system_deps() {
     case $OS in
         ubuntu|debian|kali)
             sudo apt update
-            sudo apt install -y git wget curl python3 python3-pip build-essential libpcap-dev
+            sudo apt install -y git wget curl python3 python3-pip build-essential libpcap-dev golang-go
             ;;
         fedora|rhel|centos)
-            sudo dnf install -y git wget curl python3 python3-pip gcc make libpcap-devel
+            sudo dnf install -y git wget curl python3 python3-pip gcc make libpcap-devel golang
             ;;
         arch|manjaro)
-            sudo pacman -Sy --noconfirm git wget curl python python-pip base-devel libpcap
+            sudo pacman -Sy --noconfirm git wget curl python python-pip base-devel libpcap go
             ;;
         *)
             echo -e "${RED}[!] Unsupported OS: $OS${NC}"
-            echo -e "${YELLOW}[*] Please install manually: git, wget, curl, python3, pip3, build tools${NC}"
+            echo -e "${YELLOW}[*] Please install manually: git, wget, curl, python3, pip3, build tools, go${NC}"
             return
             ;;
     esac
@@ -108,40 +108,40 @@ install_system_deps() {
 }
 
 ################################################################################
-# Install Go-based tools
+# Install Go-based tools (GAU REMOVED, WAYBACKURLS ADDED)
 ################################################################################
 install_go_tools() {
     echo -e "${YELLOW}[*] Installing Go-based tools...${NC}"
     
-    # Subfinder
-    echo -e "${BLUE}  → Installing subfinder...${NC}"
-    go install -v github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+    # Subfinder v2.6.6
+    echo -e "${BLUE}  → Installing subfinder v2.6.6...${NC}"
+    go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@v2.6.6
     
-    # Httpx
-    echo -e "${BLUE}  → Installing httpx...${NC}"
-    go install -v github.com/projectdiscovery/httpx/cmd/httpx@latest
+    # Httpx v1.6.0
+    echo -e "${BLUE}  → Installing httpx v1.6.0...${NC}"
+    go install github.com/projectdiscovery/httpx/cmd/httpx@v1.6.0
     
-    # Nuclei
-    echo -e "${BLUE}  → Installing nuclei...${NC}"
-    go install -v github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+    # Nuclei v3.3.9
+    echo -e "${BLUE}  → Installing nuclei v3.3.9...${NC}"
+    go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@v3.3.9
     
-    # Katana
-    echo -e "${BLUE}  → Installing katana...${NC}"
-    go install -v github.com/projectdiscovery/katana/cmd/katana@latest
+    # Katana v1.1.2
+    echo -e "${BLUE}  → Installing katana v1.1.2...${NC}"
+    go install github.com/projectdiscovery/katana/cmd/katana@v1.1.2
     
-    # Naabu
-    echo -e "${BLUE}  → Installing naabu...${NC}"
-    go install -v github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
+    # Naabu v2.3.1
+    echo -e "${BLUE}  → Installing naabu v2.3.1...${NC}"
+    go install github.com/projectdiscovery/naabu/v2/cmd/naabu@v2.3.1
     
-    # Gau
-    echo -e "${BLUE}  → Installing gau...${NC}"
-    go install -v github.com/lc/gau/v2/cmd/gau@latest
+    # WAYBACKURLS (NEW - replaces gau)
+    echo -e "${BLUE}  → Installing waybackurls (replaces gau)...${NC}"
+    go install github.com/tomnomnom/waybackurls@latest
     
-    # Gobuster
+    # Gobuster v3.6.0
     echo -e "${BLUE}  → Installing gobuster...${NC}"
-    go install -v github.com/OJ/gobuster/v3@latest
+    go install github.com/OJ/gobuster/v3@latest
     
-    echo -e "${GREEN}[+] Go-based tools installed${NC}"
+    echo -e "${GREEN}[+] Go-based tools installed (gau removed, waybackurls added)${NC}"
 }
 
 ################################################################################
@@ -151,13 +151,13 @@ install_amass() {
     echo -e "${YELLOW}[*] Installing Amass...${NC}"
     
     if command -v amass &> /dev/null; then
-        echo -e "${GREEN}[+] Amass already installed${NC}"
+        echo -e "${GREEN}[+] Amass already installed: $(amass version 2>&1 | head -1)${NC}"
         return
     fi
     
-    go install -v github.com/owasp-amass/amass/v4/...@master
+    go install github.com/owasp-amass/amass/v4@latest
     
-    echo -e "${GREEN}[+] Amass installed${NC}"
+    echo -e "${GREEN}[+] Amass installed successfully${NC}"
 }
 
 ################################################################################
@@ -171,7 +171,11 @@ install_sublist3r() {
         return
     fi
     
-    pip3 install --user sublist3r
+    pip3 install --user sublist3r || {
+        echo -e "${YELLOW}[*] Installing sublist3r requirements first...${NC}"
+        pip3 install --user requests dnspython argparse
+        pip3 install --user sublist3r
+    }
     
     # Add to PATH if not already there
     if ! grep -q "$HOME/.local/bin" "$RC_FILE"; then
@@ -191,7 +195,7 @@ install_nmap() {
     echo -e "${YELLOW}[*] Installing Nmap...${NC}"
     
     if command -v nmap &> /dev/null; then
-        echo -e "${GREEN}[+] Nmap already installed${NC}"
+        echo -e "${GREEN}[+] Nmap already installed: $(nmap --version | head -1)${NC}"
         return
     fi
     
@@ -226,7 +230,7 @@ install_nikto() {
             sudo apt install -y nikto
             ;;
         fedora|rhel|centos)
-            sudo dnf install -y nikto
+            sudo dnf install -y nikto || sudo yum install -y nikto
             ;;
         arch|manjaro)
             sudo pacman -S --noconfirm nikto
@@ -240,13 +244,15 @@ install_nikto() {
 # Update Nuclei templates
 ################################################################################
 update_nuclei_templates() {
-    echo -e "${YELLOW}[*] Updating Nuclei templates...${NC}"
-    nuclei -update-templates
-    echo -e "${GREEN}[+] Nuclei templates updated${NC}"
+    if command -v nuclei &> /dev/null; then
+        echo -e "${YELLOW}[*] Updating Nuclei templates...${NC}"
+        nuclei -update-templates
+        echo -e "${GREEN}[+] Nuclei templates updated${NC}"
+    fi
 }
 
 ################################################################################
-# Verify installations
+# Verify installations (UPDATED: gau removed, waybackurls added)
 ################################################################################
 verify_tools() {
     echo ""
@@ -255,12 +261,26 @@ verify_tools() {
     echo -e "${CYAN}================================${NC}"
     echo ""
     
-    local tools=("amass" "subfinder" "sublist3r" "naabu" "gau" "katana" "httpx" "nuclei" "nikto" "gobuster" "nmap")
+    declare -A tools=(
+        ["amass"]="amass version"
+        ["subfinder"]="subfinder -version"
+        ["sublist3r"]="sublist3r -h"
+        ["naabu"]="naabu -version"
+        ["katana"]="katana -version"
+        ["httpx"]="httpx -version"
+        ["nuclei"]="nuclei -version"
+        ["nikto"]="nikto -Version"
+        ["gobuster"]="gobuster version"
+        ["nmap"]="nmap --version"
+        ["waybackurls"]="waybackurls -h"  # NEW: Added waybackurls
+    )
+    
     local missing=()
     
-    for tool in "${tools[@]}"; do
+    for tool in "${!tools[@]}"; do
         if command -v "$tool" &> /dev/null; then
-            echo -e "${GREEN}[✓]${NC} $tool"
+            version=$($tool ${tools[$tool]} 2>&1 | head -1 | grep -oP '\d+\.\d+(\.\d+)*' | head -1 || echo "installed")
+            echo -e "${GREEN}[✓]${NC} $tool $version"
         else
             echo -e "${RED}[✗]${NC} $tool"
             missing+=("$tool")
@@ -270,21 +290,20 @@ verify_tools() {
     echo ""
     
     if [[ ${#missing[@]} -eq 0 ]]; then
-        echo -e "${GREEN}[+] All tools installed successfully!${NC}"
-        echo -e "${BLUE}[*] You may need to restart your shell or run: source $RC_FILE${NC}"
-        return 0
+        echo -e "${GREEN}[+] 🎉 All JAWS V3.0 tools installed successfully!${NC}"
     else
-        echo -e "${YELLOW}[!] Missing tools: ${missing[*]}${NC}"
-        echo -e "${YELLOW}[*] You may need to install these manually${NC}"
-        return 1
+        echo -e "${YELLOW}[!] ⚠️  Missing tools: ${missing[*]}${NC}"
+        echo -e "${YELLOW}[*] Run script again or install manually${NC}"
     fi
+    
+    echo -e "${BLUE}[*] Reload shell: source $RC_FILE${NC}"
 }
 
 ################################################################################
 # Main installation
 ################################################################################
 main() {
-    echo -e "${BLUE}[*] Starting installation...${NC}"
+    echo -e "${BLUE}[*] Starting JAWS V3.0 installation (gau→waybackurls)...${NC}"
     echo ""
     
     install_system_deps
@@ -315,16 +334,15 @@ main() {
     
     echo ""
     echo -e "${CYAN}================================${NC}"
-    echo -e "${GREEN}Installation Complete!${NC}"
+    echo -e "${GREEN}✅ Installation Complete!${NC}"
     echo -e "${CYAN}================================${NC}"
     echo ""
-    echo -e "${YELLOW}[*] Important: Restart your shell or run:${NC}"
+    echo -e "${YELLOW}[*] ⚡ Quick start:${NC}"
     echo -e "${CYAN}    source $RC_FILE${NC}"
-    echo ""
-    echo -e "${BLUE}[*] You can now run JAWS:${NC}"
     echo -e "${CYAN}    ./jaws.sh -h${NC}"
     echo ""
+    echo -e "${BLUE}[*] Now supports waybackurls instead of gau (faster archive data)${NC}"
 }
 
 # Run main installation
-main
+main "$@"
