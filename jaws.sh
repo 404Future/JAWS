@@ -1,7 +1,7 @@
 #!/bin/bash
 
 ################################################################################
-# JAWS (Just Another Web Scanner) V3.0
+# JAWS (Just Another Web Scanner) V3.0 - GAU-FREE VERSION
 # A comprehensive web reconnaissance and vulnerability scanner
 ################################################################################
 
@@ -33,7 +33,7 @@ show_banner() {
                                      \|_________|
 EOF
     echo -e "${NC}"
-    echo -e "${MAGENTA}JAWS - Just Another Web Scanner v${VERSION}${NC}"
+    echo -e "${MAGENTA}JAWS - Just Another Web Scanner v${VERSION} (GAU-FREE)${NC}"
     echo -e "${BLUE}Comprehensive Reconnaissance & Vulnerability Scanner${NC}"
     echo ""
 }
@@ -67,7 +67,7 @@ Other:
 Modules:
     subdomain    - Subdomain enumeration (amass, subfinder, sublist3r)
     portscan     - Port scanning (naabu, nuclei)
-    urls         - URL discovery (gau, katana)
+    urls         - URL discovery (katana, waybackurls)
     webvuln      - Web vulnerability scanning (nuclei, nikto)
     dirbust      - Directory bruteforcing (gobuster)
 
@@ -194,7 +194,10 @@ check_dependencies() {
     fi
     
     if should_run_module "urls"; then
-        required_tools+=(gau katana)
+        required_tools+=(katana httpx)
+        if ! command -v waybackurls >/dev/null 2>&1; then
+            log_warning "waybackurls not found (optional, continuing...)"
+        fi
     fi
     
     if should_run_module "webvuln"; then
@@ -216,7 +219,9 @@ check_dependencies() {
     
     if [[ ${#missing_tools[@]} -gt 0 ]]; then
         log_error "Missing required tools: ${missing_tools[*]}"
-        log_info "Install missing tools before running JAWS"
+        log_info "Install missing tools:"
+        log_info "  go install github.com/projectdiscovery/katana/cmd/katana@latest"
+        log_info "  go install github.com/tomnomnom/waybackurls@latest"
         exit 1
     fi
     
@@ -310,40 +315,41 @@ run_port_scan() {
 }
 
 ################################################################################
-# Module: URL Discovery
+# Module: URL Discovery (GAU-FREE, NO HTTPX VERIFICATION)
 ################################################################################
 run_url_discovery() {
-    log_info "Starting URL discovery..."
+    log_info "Starting URL discovery (katana + waybackurls)..."
     
-    if [[ ! -f "$OUTPUT_DIR/live.txt" ]]; then
-        log_warning "No live subdomains found, skipping URL discovery"
-        return
+    [[ ! -s "$OUTPUT_DIR/live.txt" ]] && { 
+        log_warning "No live subdomains found"; return 
+    }
+    
+    # Katana - active crawling (conservative to avoid WAF)
+    log_verbose "Running katana (active crawling)..."
+    cat "$OUTPUT_DIR/live.txt" | head -200 | \
+        katana -silent -jc -ef js,css -c 5 -rl 3 \
+        -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/katana.txt" 2>/dev/null || 
+        touch "$OUTPUT_DIR/katana.txt"
+    
+    # Waybackurls - passive archive data (optional)
+    if command -v waybackurls >/dev/null 2>&1; then
+        log_verbose "Running waybackurls (passive archive)..."
+        cat "$OUTPUT_DIR/live.txt" | head -100 | \
+            waybackurls > "$OUTPUT_DIR/wayback.txt" 2>/dev/null || 
+        touch "$OUTPUT_DIR/wayback.txt"
+    else
+        touch "$OUTPUT_DIR/wayback.txt"
     fi
     
-    # Passive collection with gau
-    log_verbose "Running gau (passive)..."
-    cat "$OUTPUT_DIR/live.txt" | \
-        gau -threads "$THREADS" ${RATE_LIMIT:+ -rate-limit "$RATE_LIMIT"} \
-        -H "User-Agent: $USER_AGENT" > "$OUTPUT_DIR/gau.txt" 2>/dev/null || touch "$OUTPUT_DIR/gau.txt"
+    # Merge ALL URLs + root endpoints (NO httpx verification - WAF bypass)
+    log_info "Merging URLs (no verification - enterprise WAF bypass)..."
+    {
+        cat "$OUTPUT_DIR"/{katana,wayback}.txt 2>/dev/null;
+        cat "$OUTPUT_DIR/live.txt" | sed 's#^#https://#';
+    } | sort -u | grep -E "^https?://" > "$OUTPUT_DIR/all_live_urls.txt"
     
-    # Active crawling with katana
-    log_verbose "Running katana (active)..."
-    cat "$OUTPUT_DIR/live.txt" | \
-        katana -silent -jc -ef js,css \
-        -c "$THREADS" ${RATE_LIMIT:+ -rl "$RATE_LIMIT"} \
-        -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/katana.txt" 2>/dev/null || touch "$OUTPUT_DIR/katana.txt"
-    
-    # Merge, filter, and verify live URLs
-    log_info "Filtering live URLs..."
-    (cat "$OUTPUT_DIR"/{gau,katana}.txt 2>/dev/null | \
-        sort -u | \
-        grep -E "^https?://" | \
-        httpx -mc 200,301,302,403 -silent -threads "$THREADS" ${RATE_LIMIT:+ -rate-limit "$RATE_LIMIT"} \
-        -H "User-Agent: $USER_AGENT" -o "$OUTPUT_DIR/all_live_urls.txt") 2>/dev/null || touch "$OUTPUT_DIR/all_live_urls.txt"
-    
-    # Count results
-    local url_count=$(wc -l <"$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null || echo 0)
-    log_success "Discovered $url_count live URLs → $OUTPUT_DIR/all_live_urls.txt"
+    local count=$(wc -l < "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null || echo 0)
+    log_success "Discovered $count URLs → $OUTPUT_DIR/all_live_urls.txt"
 }
 
 ################################################################################
