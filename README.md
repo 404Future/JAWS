@@ -11,7 +11,7 @@ A powerful, modular web reconnaissance and vulnerability scanner written in pure
 - **Comprehensive Reconnaissance Pipeline**
   - Subdomain enumeration (amass, subfinder, sublist3r)
   - Port scanning (naabu, nmap)
-  - URL discovery (gau, katana)
+  - URL discovery (waybackurls, katana)
   - Web vulnerability scanning (nuclei, nikto)
   - Targeted directory bruteforcing (gobuster)
 
@@ -66,7 +66,7 @@ If you prefer to install tools manually, JAWS requires:
 - [nmap](https://nmap.org/)
 
 **URL Discovery:**
-- [gau](https://github.com/lc/gau)
+- [waybackurls](https://github.com/tomnomnom/waybackurls)
 - [katana](https://github.com/projectdiscovery/katana)
 
 **Vulnerability Scanning:**
@@ -145,7 +145,7 @@ If you prefer to install tools manually, JAWS requires:
 |--------|-----------|-------------|
 | `subdomain` | amass, subfinder, sublist3r, httpx | Enumerate and verify live subdomains |
 | `portscan` | naabu, nuclei | Discover open ports and scan for network vulnerabilities |
-| `urls` | gau, katana, httpx | Discover and verify live URLs |
+| `urls` | waybackurls, katana, httpx | Discover and verify live URLs |
 | `webvuln` | nuclei, nikto | Scan for web vulnerabilities and misconfigurations |
 | `dirbust` | gobuster | Prepare targeted directory bruteforcing |
 
