@@ -2,7 +2,7 @@
 
 ################################################################################
 # JAWS V3.0 - Tool Installation Script  
-# Installs all required dependencies for JAWS scanner (Updated: Gau removed, waybackurls added)
+# Installs all required dependencies for JAWS scanner
 ################################################################################
 
 set -e  # Exit on error
@@ -108,7 +108,7 @@ install_system_deps() {
 }
 
 ################################################################################
-# Install Go-based tools (GAU REMOVED, WAYBACKURLS ADDED)
+# Install Go-based tools 
 ################################################################################
 install_go_tools() {
     echo -e "${YELLOW}[*] Installing Go-based tools...${NC}"
@@ -133,15 +133,15 @@ install_go_tools() {
     echo -e "${BLUE}  → Installing naabu v2.3.1...${NC}"
     go install github.com/projectdiscovery/naabu/v2/cmd/naabu@v2.3.1
     
-    # WAYBACKURLS (NEW - replaces gau)
-    echo -e "${BLUE}  → Installing waybackurls (replaces gau)...${NC}"
+    # WAYBACKURLS
+    echo -e "${BLUE}  → Installing waybackurls...${NC}"
     go install github.com/tomnomnom/waybackurls@latest
     
     # Gobuster v3.6.0
     echo -e "${BLUE}  → Installing gobuster...${NC}"
     go install github.com/OJ/gobuster/v3@latest
     
-    echo -e "${GREEN}[+] Go-based tools installed (gau removed, waybackurls added)${NC}"
+    echo -e "${GREEN}[+] Go-based tools installed${NC}"
 }
 
 ################################################################################
@@ -252,7 +252,7 @@ update_nuclei_templates() {
 }
 
 ################################################################################
-# Verify installations (UPDATED: gau removed, waybackurls added)
+# Verify installations
 ################################################################################
 verify_tools() {
     echo ""
@@ -303,7 +303,7 @@ verify_tools() {
 # Main installation
 ################################################################################
 main() {
-    echo -e "${BLUE}[*] Starting JAWS V3.0 installation (gau→waybackurls)...${NC}"
+    echo -e "${BLUE}[*] Starting JAWS V3.0 installation...${NC}"
     echo ""
     
     install_system_deps
@@ -341,7 +341,6 @@ main() {
     echo -e "${CYAN}    source $RC_FILE${NC}"
     echo -e "${CYAN}    ./jaws.sh -h${NC}"
     echo ""
-    echo -e "${BLUE}[*] Now supports waybackurls instead of gau (faster archive data)${NC}"
 }
 
 # Run main installation
