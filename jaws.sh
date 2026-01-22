@@ -346,28 +346,22 @@ run_url_discovery() {
         cat "$OUTPUT_DIR/live.txt" | sed 's#^#https://#';
     } | sort -u | grep -E "^https?://" > "$OUTPUT_DIR/all_live_urls.txt"
     
-    # INTELLIGENT PRIORITIZATION
-    log_info "🔍 Prioritizing critical endpoints..."
+    # INTELLIGENT PRIORITIZATION - FIXED REGEX
+    log_info "Prioritizing critical endpoints..."
     
-    # CRITICAL: High-value paths
-    grep -Ei "(admin|api|login|auth|dashboard|panel|portal|
-               dev|stage|qa|beta|test|staging|uat|
-               debug|config|backup|private|internal|
-               console|mgmt|management|control|
-               gateway|proxy|redirect)" \
-         "$OUTPUT_DIR/all_live_urls.txt" > "$OUTPUT_DIR/critical_urls.txt" || 
+    # CRITICAL: High-value paths (no parentheses)
+    grep -E -i "admin|api|login|auth|dashboard|panel|portal|dev|stage|qa|beta|test|staging|uat|debug|config|backup|private|internal|console|mgmt|management|control|gateway|proxy|redirect" \
+         "$OUTPUT_DIR/all_live_urls.txt" > "$OUTPUT_DIR/critical_urls.txt" 2>/dev/null || 
          touch "$OUTPUT_DIR/critical_urls.txt"
     
-    # Remove noise files
-    grep -v -E "(manifest\.json|site\.webmanifest|
-                 i18n.*\.json|olkerror\.html|favicon|
-                 robots\.txt|sitemap\.xml|ds\.store)" \
-         "$OUTPUT_DIR/critical_urls.txt" > "$OUTPUT_DIR/vuln_targets.txt" || 
+    # Remove noise files - FIXED REGEX
+    grep -v -E "manifest\.json|site\.webmanifest|i18n.*\.json|olkerror\.html|favicon\.ico|robots\.txt|sitemap\.xml|\.DS_Store" \
+         "$OUTPUT_DIR/critical_urls.txt" > "$OUTPUT_DIR/vuln_targets.txt" 2>/dev/null || 
          touch "$OUTPUT_DIR/vuln_targets.txt"
     
     local total=$(wc -l < "$OUTPUT_DIR/all_live_urls.txt" 2>/dev/null || echo 0)
     local critical=$(wc -l < "$OUTPUT_DIR/vuln_targets.txt" 2>/dev/null || echo 0)
-    log_success "URLs: $total total → $critical CRITICAL prioritized → vuln_targets.txt"
+    log_success "URLs: $total total -> $critical CRITICAL prioritized -> vuln_targets.txt"
 }
 
 ################################################################################
@@ -376,20 +370,23 @@ run_url_discovery() {
 run_web_vuln_scan() {
     log_info "Intelligent web vulnerability scanning..."
     
-    # PRIORITY 1: CRITICAL URLS (50 max)
+    # PRIORITY 1: CRITICAL URLS (limit to 50)
     if [[ -s "$OUTPUT_DIR/vuln_targets.txt" ]]; then
-        log_info "Nuclei: $(wc -l < "$OUTPUT_DIR/vuln_targets.txt") CRITICAL URLs..."
-        timeout 120 nuclei -l "$OUTPUT_DIR/vuln_targets.txt" \
+        critical_count=$(wc -l < "$OUTPUT_DIR/vuln_targets.txt" 2>/dev/null || echo 0)
+        log_info "Nuclei: $critical_count CRITICAL URLs..."
+        head -50 "$OUTPUT_DIR/vuln_targets.txt" > "$OUTPUT_DIR/scan_critical.txt"
+        timeout 120 nuclei -l "$OUTPUT_DIR/scan_critical.txt" \
             -tags http,cve,misconfig,default-login,auth-bypass,xss,lfi,rfi,ssrf,api \
             -severity critical,high,medium -c 20 \
             -H "User-Agent: $USER_AGENT" \
             -o "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || {
                 log_warning "Nuclei partial results saved"
             }
+        rm -f "$OUTPUT_DIR/scan_critical.txt"
     fi
     
-    # PRIORITY 2: Top live subdomains (25 max)
-    log_info "Nikto: Top 25 live subdomains (FIXED SYNTAX)..."
+    # PRIORITY 2: Top live subdomains (25 max) - FIXED SYNTAX
+    log_info "Nikto: Top 25 live subdomains..."
     if [[ -f "$OUTPUT_DIR/live.txt" ]]; then
         {
             echo "=== $(date) JAWS Nikto Scan ===" 
@@ -397,24 +394,26 @@ run_web_vuln_scan() {
             xargs -I {} -P 5 timeout 25 sh -c '
                 echo "--- $(date) https://{} ---" &&
                 nikto -h "https://{}" -Format txt -user-agent "'"$USER_AGENT"'" \
-                    -Tuning x2 2>/dev/null || echo "Nikto: {} - failed/timeout"
+                    -Tuning x 2>/dev/null || echo "Nikto: {} - failed/timeout"
             '
-        } >> "$OUTPUT_DIR/nikto.txt" 2>/dev/null || touch "$OUTPUT_DIR/nikto.txt"
+        } > "$OUTPUT_DIR/nikto.txt" 2>/dev/null || touch "$OUTPUT_DIR/nikto.txt"
     fi
     
-    # PRIORITY 3: Fallback to top ALL URLs if no critical found
+    # PRIORITY 3: Fallback to top ALL URLs if no critical results - FIXED PIPE
     if [[ ! -s "$OUTPUT_DIR/http-vulns.txt" && -s "$OUTPUT_DIR/all_live_urls.txt" ]]; then
         log_info "Fallback: Top 100 ALL URLs..."
-        head -100 "$OUTPUT_DIR/all_live_urls.txt" | \
-        timeout 90 nuclei -l - -tags misconfig,http \
-            -c 10 -H "User-Agent: $USER_AGENT" \
-            -o "$OUTPUT_DIR/http-vulns.txt"
+        head -100 "$OUTPUT_DIR/all_live_urls.txt" > "$OUTPUT_DIR/top100_urls.txt"
+        timeout 90 nuclei -l "$OUTPUT_DIR/top100_urls.txt" \
+            -tags misconfig,http -c 10 \
+            -H "User-Agent: $USER_AGENT" \
+            -o "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || touch "$OUTPUT_DIR/http-vulns.txt"
+        rm -f "$OUTPUT_DIR/top100_urls.txt"
     fi
     
     # Results summary
     local nuclei=$(wc -l < "$OUTPUT_DIR/http-vulns.txt" 2>/dev/null || echo 0)
-    local nikto=$(grep -c "https://" "$OUTPUT_DIR/nikto.txt" 2>/dev/null || echo 0)
-    log_success "🛡️ Web scan COMPLETE | Nuclei: $nuclei | Nikto: $nikto results"
+    local nikto_size=$(stat -c%s "$OUTPUT_DIR/nikto.txt" 2>/dev/null || echo 0)
+    log_success "Web scan COMPLETE | Nuclei: $nuclei | Nikto: $(($nikto_size/1024))KB"
 }
 
 ################################################################################
