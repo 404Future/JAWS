@@ -158,8 +158,9 @@ After a scan, you'll find these key files in your output directory:
 | `live.txt` | Live subdomains |
 | `all_live_urls.txt` | All discovered live URLs |
 | `naabu-vulns.txt` | Network/service vulnerabilities |
-| `http-vulns.txt` | Web application vulnerabilities |
-| `nikto.json` | Nikto scan results |
+| `http-vulns.txt` | Web application vulnerabilities (Low/Medium/Info) |
+| `http-cves.txt` | Web application CVEs (Critical/High) |
+| `nikto.txt` | Nikto scan results |
 | `naabu.txt` | Port scan results (for deeper nmap analysis) |
 | `gobuster_paths.txt` | Interesting paths for manual bruteforcing |
 
