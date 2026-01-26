@@ -6,7 +6,7 @@
 
 A powerful, modular web reconnaissance and vulnerability scanner written in pure bash.
 
-## 🎯 Features
+## Features
 
 - **Comprehensive Reconnaissance Pipeline**
   - Subdomain enumeration (amass, subfinder, sublist3r)
@@ -25,7 +25,7 @@ A powerful, modular web reconnaissance and vulnerability scanner written in pure
   - Run all modules or select specific ones
   - Skip unwanted modules
 
-## 📦 Installation
+## Installation
 
 ### Quick Install (Automated)
 
@@ -79,7 +79,7 @@ If you prefer to install tools manually, JAWS requires:
 **Utilities:**
 - [httpx](https://github.com/projectdiscovery/httpx)
 
-## 🚀 Usage
+## Usage
 
 ### Basic Scan
 ```bash
@@ -109,7 +109,7 @@ If you prefer to install tools manually, JAWS requires:
   --header "X-Researcher: YourName"
 ```
 
-## 📋 Command-Line Options
+## Command-Line Options
 
 ### Required
 | Option | Description |
@@ -139,7 +139,7 @@ If you prefer to install tools manually, JAWS requires:
 | `-v, --verbose` | Verbose output |
 | `-h, --help` | Show help message |
 
-## 🔧 Modules
+## Modules
 
 | Module | Tools Used | Description |
 |--------|-----------|-------------|
@@ -149,7 +149,7 @@ If you prefer to install tools manually, JAWS requires:
 | `webvuln` | nuclei, nikto | Scan for web vulnerabilities and misconfigurations |
 | `dirbust` | gobuster | Prepare targeted directory bruteforcing |
 
-## 📊 Output Files
+## Output Files
 
 After a scan, you'll find these key files in your output directory:
 
@@ -164,7 +164,7 @@ After a scan, you'll find these key files in your output directory:
 | `naabu.txt` | Port scan results (for deeper nmap analysis) |
 | `gobuster_paths.txt` | Interesting paths for manual bruteforcing |
 
-## 💡 Examples
+## Examples
 
 ### Full Scan with Custom Settings
 ```bash
@@ -186,7 +186,7 @@ After a scan, you'll find these key files in your output directory:
 ./jaws.sh -t example.com -m webvuln --skip subdomain,portscan,urls
 ```
 
-## 🔍 Manual Follow-up
+## Manual Follow-up
 
 ### Deep Nmap Scan
 After the initial scan, you can run a deeper nmap scan:
@@ -204,14 +204,14 @@ while read sub; do
 done < output/example.com/live.txt
 ```
 
-## 🛡️ Bug Bounty Best Practices
+## Bug Bounty Best Practices
 
 1. **Always set a custom User-Agent** to identify yourself
 2. **Use rate limiting** to avoid overwhelming targets
 3. **Read the program rules** before scanning
 4. **Respect scope** - only scan authorized targets
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please visit the [official repository](https://github.com/404Future/JAWS) to:
 - Report bugs
